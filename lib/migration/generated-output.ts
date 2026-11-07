@@ -52,6 +52,17 @@ function isNodeBuiltin(specifier: string) {
   return specifier.startsWith("node:") || builtinModules.includes(unprefixed);
 }
 
+function isAllowedPackage(specifier: string) {
+  return (
+    specifier === "react" ||
+    specifier.startsWith("react/") ||
+    specifier === "react-dom" ||
+    specifier.startsWith("react-dom/") ||
+    specifier === "next" ||
+    specifier.startsWith("next/")
+  );
+}
+
 export function validateGeneratedFiles(value: unknown): GeneratedFile[] {
   if (!Array.isArray(value) || value.length < 2 || value.length > MAX_OUTPUT_FILES) {
     throw new ModelError("The model generated an incomplete or oversized file set. Try again with a smaller source.");
@@ -85,11 +96,11 @@ export function validateGeneratedFiles(value: unknown): GeneratedFile[] {
       if (isNodeBuiltin(specifier)) {
         throw new ModelError("The generated output imported a Node.js built-in module, which is not allowed.");
       }
-      if (specifier === "react" || specifier === "react/jsx-runtime" || specifier === "next" || specifier.startsWith("next/")) continue;
-      if (specifier.startsWith("@/components/")) {
-        const stem = `components/${specifier.slice("@/components/".length)}`;
+      if (isAllowedPackage(specifier)) continue;
+      if (specifier.startsWith("@/")) {
+        const stem = specifier.slice(2);
         if (![stem, `${stem}.tsx`, `${stem}.ts`, `${stem}.css`, `${stem}/index.tsx`, `${stem}/index.ts`].some((path) => available.has(path))) {
-          throw new ModelError(`A generated file imports a component that was not included (${specifier}). Try generating again.`);
+          throw new ModelError(`A generated file imports a path that was not included (${specifier}). Try generating again.`);
         }
         continue;
       }

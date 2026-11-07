@@ -63,7 +63,7 @@ export async function downloadPinnedGitHubArchive(input: {
   let archiveResponse: Response;
   try {
     archiveResponse = await fetch(archiveUrl, {
-      headers: { Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2026-03-10", "User-Agent": "StackShift" },
+      headers: { Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2026-03-10", "User-Agent": "CodeMorph-AI" },
       cache: "no-store",
       redirect: "manual",
       signal: AbortSignal.timeout(12_000),

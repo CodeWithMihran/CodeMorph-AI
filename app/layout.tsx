@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "StackShift — Move your website to a better stack",
+  title: "CodeMorph AI — Autonomous Codebase Audit & Cross-Stack Transformation",
   description:
-    "Analyze a public website repository and plan a clear, verifiable migration to a modern application stack.",
+    "Analyze and audit entire codebases, detect security and runtime flaws, and plan verifiable cross-framework migrations.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

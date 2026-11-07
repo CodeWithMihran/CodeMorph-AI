@@ -69,7 +69,7 @@ export default function Home() {
       } catch {
         setAnalysisState({
           status: "error",
-          message: "StackShift returned an unexpected response. Please try again.",
+          message: "CodeMorph AI returned an unexpected response. Please try again.",
         });
         return;
       }
@@ -86,7 +86,7 @@ export default function Home() {
     } catch {
       setAnalysisState({
         status: "error",
-        message: "The request did not reach StackShift. Check your connection and try again.",
+        message: "The request did not reach CodeMorph AI. Check your connection and try again.",
       });
     }
   }
@@ -107,7 +107,7 @@ export default function Home() {
       }
       setAuditState({ status: "success", report: data.report, markdown: data.markdown });
     } catch {
-      setAuditState({ status: "error", message: "The audit request did not reach StackShift. Check your connection and try again." });
+      setAuditState({ status: "error", message: "The audit request did not reach CodeMorph AI. Check your connection and try again." });
     }
   }
 
@@ -137,7 +137,7 @@ export default function Home() {
       }
       setZipAuditState({ status: "success", report: data.report, markdown: data.markdown });
     } catch {
-      setZipAuditState({ status: "error", message: "The ZIP upload did not reach StackShift. Check your connection and try again." });
+      setZipAuditState({ status: "error", message: "The ZIP upload did not reach CodeMorph AI. Check your connection and try again." });
     }
   }
 
@@ -171,7 +171,7 @@ export default function Home() {
       }
       setPlanState({ status: "success", plan: data.plan });
     } catch {
-      setPlanState({ status: "error", message: "The request did not reach StackShift. Check your connection and try again." });
+      setPlanState({ status: "error", message: "The request did not reach CodeMorph AI. Check your connection and try again." });
     }
   }
 
@@ -189,22 +189,22 @@ export default function Home() {
         setGenerationState({ status: "error", message: data.error ?? "Project generation failed. Please try again." });
         return;
       }
-      const fileCount = Number(response.headers.get("X-StackShift-File-Count")) || 0;
-      const sourceFileCount = Number(response.headers.get("X-StackShift-Source-Files")) || 0;
-      const validation = response.headers.get("X-StackShift-Validation") ?? "not-run";
-      const build = response.headers.get("X-StackShift-Build") ?? "not-run";
-      const rootRoute = response.headers.get("X-StackShift-Root-Route") ?? "not-run";
+      const fileCount = Number(response.headers.get("X-CodeMorph-File-Count") || response.headers.get("X-StackShift-File-Count")) || 0;
+      const sourceFileCount = Number(response.headers.get("X-CodeMorph-Source-Files") || response.headers.get("X-StackShift-Source-Files")) || 0;
+      const validation = (response.headers.get("X-CodeMorph-Validation") || response.headers.get("X-StackShift-Validation")) ?? "not-run";
+      const build = (response.headers.get("X-CodeMorph-Build") || response.headers.get("X-StackShift-Build")) ?? "not-run";
+      const rootRoute = (response.headers.get("X-CodeMorph-Root-Route") || response.headers.get("X-StackShift-Root-Route")) ?? "not-run";
       const objectUrl = URL.createObjectURL(await response.blob());
       const anchor = document.createElement("a");
       anchor.href = objectUrl;
-      anchor.download = "stackshift-migrated-project.zip";
+      anchor.download = "codemorph-migrated-project.zip";
       document.body.append(anchor);
       anchor.click();
       anchor.remove();
       window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1_000);
       setGenerationState({ status: "success", fileCount, sourceFileCount, validation, build, rootRoute });
     } catch {
-      setGenerationState({ status: "error", message: "The request did not reach StackShift. Check your connection and try again." });
+      setGenerationState({ status: "error", message: "The request did not reach CodeMorph AI. Check your connection and try again." });
     }
   }
 
@@ -217,17 +217,17 @@ export default function Home() {
   return (
     <main className="app-shell">
       <header className="topbar">
-        <Link className="brand" href="/" aria-label="StackShift home">
+        <Link className="brand" href="/" aria-label="CodeMorph AI home">
           <span className="brand-mark" aria-hidden="true">
             <svg viewBox="0 0 32 32" fill="none">
               <path d="M7 10h17l-4-4M25 22H8l4 4" />
               <path d="M24 10l-4 4M8 22l4-4" />
             </svg>
           </span>
-          <span>stackshift<span className="brand-period">.</span></span>
+          <span>codemorph<span className="brand-period">.</span></span>
         </Link>
         <div className="topbar-right">
-          <span className="topbar-label">REPOSITORY MIGRATION</span>
+          <span className="topbar-label">AI CODEBASE AUDITOR &amp; TRANSFORMATION</span>
           <span className="topbar-divider" aria-hidden="true" />
           <a className="github-link" href="https://github.com" target="_blank" rel="noreferrer">
             <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -240,10 +240,10 @@ export default function Home() {
 
       <section className="hero-section" aria-labelledby="hero-title">
         <div className="hero-copy">
-          <div className="eyebrow"><span className="eyebrow-line" /> YOUR CODE, READY FOR WHAT&apos;S NEXT</div>
+          <div className="eyebrow"><span className="eyebrow-line" /> AI CODEBASE AUDIT &amp; TRANSFORMATION</div>
           <h1 id="hero-title">A better stack<br />starts with <span>your repo.</span></h1>
           <p className="hero-description">
-            Bring a website repository. StackShift will map what&apos;s there, plan the move, and help you build what comes next.
+            Bring a website repository or ZIP archive. CodeMorph AI will map what&apos;s there, audit issues, plan the transformation, and build what comes next.
           </p>
           <div className="hero-assurance">
             <span className="assurance-icon" aria-hidden="true">↗</span>
@@ -348,7 +348,7 @@ export default function Home() {
 
           <div className="card-footnote">
             <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M10 2.5 3.75 5v4.38c0 3.87 2.67 7.49 6.25 8.37 3.58-.88 6.25-4.5 6.25-8.37V5L10 2.5Z" /><path d="m7.5 10 1.67 1.67L12.92 8" /></svg>
-            <span>Read-only inspection. StackShift never runs repository scripts.</span>
+            <span>Read-only inspection. CodeMorph AI never runs repository scripts on the web server.</span>
           </div>
 
           {analysisState.status === "success" && (() => {
@@ -410,8 +410,8 @@ export default function Home() {
       </section>
 
       <footer className="page-footer">
-        <span>STACKSHIFT <i>·</i> REPOSITORY MIGRATION, MADE CLEAR.</span>
-        <span>PUBLIC REPOSITORIES <i>·</i> READ ONLY</span>
+        <span>CODEMORPH AI <i>·</i> CODEBASE AUDITING &amp; TRANSFORMATION, MADE CLEAR.</span>
+        <span>PUBLIC REPOSITORIES &amp; ZIP ARCHIVES <i>·</i> READ ONLY</span>
       </footer>
     </main>
   );
@@ -479,7 +479,7 @@ function MigrationPlanReview({
       </p>
       <div className="generation-consent">
         <strong>Before code generation</strong>
-        <p>StackShift will send up to 16 small source files to OpenAI for generation. Credential-like strings are redacted and secret/config files are excluded. Your OpenAI API usage may incur charges.</p>
+        <p>CodeMorph AI will send up to 16 small source files to OpenAI for generation. Credential-like strings are redacted and secret/config files are excluded. Your OpenAI API usage may incur charges.</p>
         <label className="plan-review-check">
           <input type="checkbox" checked={consented} onChange={(event) => setConsented(event.target.checked)} />
           <span>I agree to send the selected source files to OpenAI for this generation.</span>

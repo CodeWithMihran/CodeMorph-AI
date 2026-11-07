@@ -38,7 +38,7 @@ async function readBody(request: Request): Promise<unknown> {
 
 function scaffold(summary: string, goal: string): ZipEntry[] {
   const packageJson = {
-    name: "stackshift-migrated-site",
+    name: "codemorph-migrated-site",
     version: "0.1.0",
     private: true,
     scripts: { dev: "next dev", build: "next build", start: "next start" },
@@ -50,7 +50,7 @@ function scaffold(summary: string, goal: string): ZipEntry[] {
     { path: "tsconfig.json", content: JSON.stringify({ compilerOptions: { target: "ES2017", lib: ["dom", "dom.iterable", "esnext"], allowJs: true, skipLibCheck: true, strict: true, noEmit: true, esModuleInterop: true, module: "esnext", moduleResolution: "bundler", resolveJsonModule: true, isolatedModules: true, jsx: "react-jsx", incremental: true, plugins: [{ name: "next" }], paths: { "@/*": ["./*"] } }, include: ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts", ".next/dev/types/**/*.ts", "**/*.mts"], exclude: ["node_modules"] }, null, 2) + "\n" },
     { path: "next.config.ts", content: 'import type { NextConfig } from "next";\n\nconst nextConfig: NextConfig = {};\n\nexport default nextConfig;\n' },
     { path: ".gitignore", content: "node_modules\n.next\n/out\n/build\n.env*\n*.tsbuildinfo\nnext-env.d.ts\n" },
-    { path: "app/layout.tsx", content: 'import type { Metadata } from "next";\nimport type { ReactNode } from "react";\nimport "./globals.css";\n\nexport const metadata: Metadata = { title: "Migrated Website", description: "A website migration generated with StackShift." };\n\nexport default function RootLayout({ children }: { children: ReactNode }) {\n  return <html lang="en"><body>{children}</body></html>;\n}\n' },
+    { path: "app/layout.tsx", content: 'import type { Metadata } from "next";\nimport type { ReactNode } from "react";\nimport "./globals.css";\n\nexport const metadata: Metadata = { title: "Migrated Website", description: "A website migration generated with CodeMorph AI." };\n\nexport default function RootLayout({ children }: { children: ReactNode }) {\n  return <html lang="en"><body>{children}</body></html>;\n}\n' },
     { path: "README.md", content: `# Migrated website\n\n${summary}\n\n## Run locally\n\n\`npm install\`\n\n\`npm run dev\`\n\n## Requested outcome\n\n${goal}\n\nSee MIGRATION-REPORT.md for what was generated and what remains unverified.\n` },
   ];
 }
@@ -59,7 +59,7 @@ function migrationReport(input: { repository: string; commitSha: string; goal: s
   const files = input.generatedFiles.map((file) => `- \`${file.path}\``).join("\n");
   const limitations = input.limitations.slice(0, 8).map((item) => `- ${item.replace(/[\r\n]/g, " ").slice(0, 300)}`).join("\n");
   const diagnostics = input.validation.diagnostics.map((line) => `- ${line}`).join("\n") || "- No worker diagnostics were returned.";
-  return `# StackShift migration report\n\n- Source: ${input.repository}\n- Source commit: \`${input.commitSha}\`\n- Target: Next.js App Router + TypeScript\n- Source files provided to the model: ${input.sourceFileCount}\n- Additional eligible source files omitted by inspection limits: ${input.excludedFileCount}\n- Validation status: ${input.validation.status}\n- Production build: ${input.validation.build}\n- Root route HTTP check: ${input.validation.rootRoute}\n- Validation duration: ${input.validation.durationMs} ms\n\n## Requested outcome\n\n${input.goal}\n\n## Generation summary\n\n${input.summary.replace(/[\r\n]/g, " ").slice(0, 500)}\n\n## Generated files\n\n${files}\n\n## Validation result\n\n${input.validation.message}\n\n### Bounded diagnostics\n\n${diagnostics}\n\n## Limitations and manual work\n\n${limitations || "- Review the generated project and validation report before relying on it."}\n- Binary assets were not copied in this phase.\n- Build and route checks do not prove full feature parity or accessibility.\n- Check forms, links, responsive layouts, accessibility, and external service setup manually.\n`;
+  return `# CodeMorph AI migration report\n\n- Source: ${input.repository}\n- Source commit: \`${input.commitSha}\`\n- Target: Next.js App Router + TypeScript\n- Source files provided to the model: ${input.sourceFileCount}\n- Additional eligible source files omitted by inspection limits: ${input.excludedFileCount}\n- Validation status: ${input.validation.status}\n- Production build: ${input.validation.build}\n- Root route HTTP check: ${input.validation.rootRoute}\n- Validation duration: ${input.validation.durationMs} ms\n\n## Requested outcome\n\n${input.goal}\n\n## Generation summary\n\n${input.summary.replace(/[\r\n]/g, " ").slice(0, 500)}\n\n## Generated files\n\n${files}\n\n## Validation result\n\n${input.validation.message}\n\n### Bounded diagnostics\n\n${diagnostics}\n\n## Limitations and manual work\n\n${limitations || "- Review the generated project and validation report before relying on it."}\n- Binary assets were not copied in this phase.\n- Build and route checks do not prove full feature parity or accessibility.\n- Check forms, links, responsive layouts, accessibility, and external service setup manually.\n`;
 }
 
 export async function POST(request: Request) {
@@ -133,8 +133,13 @@ export async function POST(request: Request) {
       status: 200,
       headers: {
         "Content-Type": "application/zip",
-        "Content-Disposition": 'attachment; filename="stackshift-migrated-project.zip"',
+        "Content-Disposition": 'attachment; filename="codemorph-migrated-project.zip"',
         "Cache-Control": "no-store",
+        "X-CodeMorph-File-Count": String(entries.length),
+        "X-CodeMorph-Source-Files": String(source.fileCount),
+        "X-CodeMorph-Validation": validation.status,
+        "X-CodeMorph-Build": validation.build,
+        "X-CodeMorph-Root-Route": validation.rootRoute,
         "X-StackShift-File-Count": String(entries.length),
         "X-StackShift-Source-Files": String(source.fileCount),
         "X-StackShift-Validation": validation.status,

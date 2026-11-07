@@ -73,7 +73,7 @@ export async function generateWithOpenAI(input: {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new ModelError("Generation needs an OpenAI API key. Add OPENAI_API_KEY to your local .env.local file and restart the dev server.", 503);
 
-  const model = process.env.STACKSHIFT_OPENAI_MODEL || "gpt-5-mini";
+  const model = process.env.CODEMORPH_OPENAI_MODEL || process.env.STACKSHIFT_OPENAI_MODEL || "gpt-4o-mini";
   let response: Response;
   try {
     response = await fetch("https://api.openai.com/v1/responses", {
@@ -101,7 +101,7 @@ export async function generateWithOpenAI(input: {
           assetPathsNotCopied: input.availableAssets,
           target: "Next.js App Router, TypeScript, React, and CSS",
         }),
-        text: { format: { type: "json_schema", name: "stackshift_generated_project", strict: true, schema: OUTPUT_SCHEMA } },
+        text: { format: { type: "json_schema", name: "codemorph_generated_project", strict: true, schema: OUTPUT_SCHEMA } },
       }),
     });
   } catch (error) {
@@ -111,7 +111,7 @@ export async function generateWithOpenAI(input: {
 
   if (response.status === 401) throw new ModelError("OpenAI rejected the configured API key. Check OPENAI_API_KEY and try again.", 502);
   if (response.status === 429) throw new ModelError("OpenAI rate limit or available API quota was reached. Check your API account and try again.", 429);
-  if (response.status === 403) throw new ModelError("This API key or project cannot access the selected model. Check model access and STACKSHIFT_OPENAI_MODEL.", 502);
+  if (response.status === 403) throw new ModelError("This API key or project cannot access the selected model. Check model access and CODEMORPH_OPENAI_MODEL.", 502);
   if (!response.ok) throw new ModelError("OpenAI could not generate this project. Check model access and try again.", 502);
 
   const payload = await readJsonCapped(response, 1_500_000);

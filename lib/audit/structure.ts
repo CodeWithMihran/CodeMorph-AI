@@ -20,7 +20,13 @@ type StructuralResult = {
 };
 
 const CODE_FILE = /\.(?:[cm]?[jt]sx?)$/i;
-const RESOLVE_EXTENSIONS = ["", ".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs", ".json", ".css", ".scss", ".sass"];
+const RESOLVE_EXTENSIONS = [
+  "",
+  ".ts", ".tsx", ".mts", ".cts",
+  ".js", ".jsx", ".mjs", ".cjs",
+  ".json", ".css", ".scss", ".sass",
+  ".module.css", ".module.scss", ".module.sass"
+];
 const RESOLVE_INDEXES = ["index.ts", "index.tsx", "index.mts", "index.cts", "index.js", "index.jsx", "index.mjs", "index.cjs", "index.json"];
 
 function lineAt(content: string, line: number) {
@@ -144,8 +150,18 @@ function aliasTargets(specifier: string, paths: Record<string, string[]>, baseUr
     const capture = specifier.slice(prefix.length, specifier.length - suffix.length);
     results.push(...targets.map((target) => path.posix.join(baseUrl, target.replace("*", capture))));
   }
-  if (specifier.startsWith("@/")) results.push(specifier.slice(2));
-  if (specifier.startsWith("~/")) results.push(specifier.slice(2));
+  if (specifier.startsWith("@/")) {
+    const sub = specifier.slice(2);
+    results.push(sub);
+    results.push(path.posix.join("src", sub));
+    if (baseUrl && baseUrl !== ".") results.push(path.posix.join(baseUrl, sub));
+  }
+  if (specifier.startsWith("~/")) {
+    const sub = specifier.slice(2);
+    results.push(sub);
+    results.push(path.posix.join("src", sub));
+    if (baseUrl && baseUrl !== ".") results.push(path.posix.join(baseUrl, sub));
+  }
   return results;
 }
 

@@ -53,7 +53,7 @@ export async function githubJson(path: string, maxBytes = MAX_JSON_BYTES): Promi
     headers: {
       Accept: "application/vnd.github+json",
       "X-GitHub-Api-Version": "2026-03-10",
-      "User-Agent": "StackShift",
+      "User-Agent": "CodeMorph-AI",
     },
     cache: "no-store",
     redirect: "manual",

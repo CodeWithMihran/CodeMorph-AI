@@ -128,7 +128,8 @@ test("generated output validation checks dynamic imports and blocks Node built-i
   assert.throws(() => validateGeneratedFiles(validFiles('export default function Page() { return import(moduleName); }')), /computed dynamic import/i);
   assert.throws(() => validateGeneratedFiles(validFiles('export default async function Page() { await import("unknown-package"); return <main />; }')), /unsupported dependency/i);
   assert.throws(() => validateGeneratedFiles(validFiles('export default function Page() { return import("./missing"); }')), /not included/i);
-  assert.equal(validateGeneratedFiles(validFiles('export default function Page() { return <main />; }')).length, 2);
+  assert.throws(() => validateGeneratedFiles(validFiles('export default function Page() { return import("@/missing"); }')), /not included/i);
+  assert.equal(validateGeneratedFiles(validFiles('import "@/app/globals.css"; import "react-dom"; export default function Page() { return <main />; }')).length, 2);
 });
 
 test("source revalidation detects large manifests while metadata-only plans avoid source blobs", async (t) => {
@@ -430,6 +431,18 @@ test("structural audit parses .mts and .cts files as TypeScript", () => {
   assert.equal(report.structure.parsedFiles, 2);
   assert.equal(report.structure.syntaxErrors, 0);
   assert.equal(report.findings.some((finding) => finding.ruleId === "AST001"), false);
+});
+
+test("structural audit resolves @/ alias to src/ even when tsconfig paths are omitted", () => {
+  const archive = makeZip([
+    { name: "fixture-root/package.json", content: JSON.stringify({ name: "fixture" }) },
+    { name: "fixture-root/src/known.ts", content: "export const known = true;" },
+    { name: "fixture-root/src/page.tsx", content: "import Known from '@/known';" },
+  ]);
+  const manifest = readZipSourceManifest(archive, "src-alias.zip");
+  const report = auditSourceFiles({ manifest });
+  assert.equal(report.structure.unresolvedInternalImports, 0);
+  assert.equal(report.structure.resolvedInternalImports, 1);
 });
 
 test("dependency advisory audit queries exact locked npm versions and records OSV matches", async (t) => {
