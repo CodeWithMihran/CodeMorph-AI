@@ -2,15 +2,13 @@ import { GitHubApiError, isJsonRecord } from "@/lib/github/api";
 import { inspectMigrationSource } from "@/lib/github/migration-source";
 import type { RepositoryAnalysis } from "@/lib/github/analysis";
 import { createMigrationPlan, type MigrationPlan } from "@/lib/migration/plan";
-import { generateWithOpenAI, ModelError, type GeneratedFile } from "@/lib/migration/model";
-import { containsCredentialPattern } from "@/lib/github/source";
+import { generateWithOpenAI, ModelError } from "@/lib/migration/model";
+import type { GeneratedFile } from "@/lib/migration/model";
+import { validateGeneratedFiles } from "@/lib/migration/generated-output";
 import { createZip, type ZipEntry } from "@/lib/migration/zip";
 import { validateGeneratedProject, type ValidationResult } from "@/lib/migration/validation";
 
 const MAX_REQUEST_BYTES = 24_000;
-const MAX_OUTPUT_FILES = 24;
-const MAX_OUTPUT_FILE_BYTES = 40_000;
-const MAX_OUTPUT_BYTES = 250_000;
 
 async function readBody(request: Request): Promise<unknown> {
   const declaredLength = Number(request.headers.get("content-length"));
@@ -36,72 +34,6 @@ async function readBody(request: Request): Promise<unknown> {
   for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
   try { return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)) as unknown; }
   catch { throw new GitHubApiError("Send a valid JSON request.", 400); }
-}
-
-function validGeneratedPath(path: string) {
-  if (path.length > 200 || path.startsWith("/") || path.includes("\\") || path.includes(":") || path.includes("\u0000")) return false;
-  const segments = path.split("/");
-  if (segments.some((part) => !part || part === "." || part === ".." || part.startsWith("."))) return false;
-  if (!/^(?:app\/(?!api\/)[a-zA-Z0-9_./-]+|components\/[a-zA-Z0-9_./-]+)\.(?:tsx?|css)$/.test(path)) return false;
-  if (["app/layout.tsx", "package.json", "tsconfig.json", "next.config.ts"].includes(path)) return false;
-  return true;
-}
-
-function validateGeneratedFiles(value: unknown): GeneratedFile[] {
-  if (!Array.isArray(value) || value.length < 2 || value.length > MAX_OUTPUT_FILES) {
-    throw new ModelError("The model generated an incomplete or oversized file set. Try again with a smaller source.");
-  }
-  const files: GeneratedFile[] = [];
-  const seen = new Set<string>();
-  let totalBytes = 0;
-  for (const item of value) {
-    if (!isJsonRecord(item) || typeof item.path !== "string" || typeof item.content !== "string" || !validGeneratedPath(item.path)) {
-      throw new ModelError("The model returned an invalid project file path. The output was blocked.");
-    }
-    if (seen.has(item.path)) throw new ModelError("The model returned duplicate project files. Try generating again.");
-    if (Buffer.byteLength(item.content, "utf8") > MAX_OUTPUT_FILE_BYTES) throw new ModelError("A generated file exceeded the output size limit.");
-    if (containsCredentialPattern(item.content)) throw new ModelError("The generated output contained a credential-like value and was blocked. Try again.");
-    if (/\b(?:eval\s*\(|new\s+Function\s*\(|require\s*\(|from\s*["']node:|from\s*["'](?:child_process|fs|net|tls|http|https)["'])/i.test(item.content)) {
-      throw new ModelError("The generated output used a blocked dynamic-code or operating-system API.");
-    }
-    totalBytes += Buffer.byteLength(item.content, "utf8");
-    if (totalBytes > MAX_OUTPUT_BYTES) throw new ModelError("The generated project exceeded the total output size limit.");
-    seen.add(item.path);
-    files.push({ path: item.path, content: item.content });
-  }
-  if (!seen.has("app/page.tsx") || !seen.has("app/globals.css")) {
-    throw new ModelError("The model did not return the required Next.js page and stylesheet. Try again.");
-  }
-
-  const available = new Set([...seen, "app/layout.tsx", "package.json", "tsconfig.json", "next.config.ts", ".gitignore", "README.md", "MIGRATION-REPORT.md"]);
-  for (const file of files) {
-    const imports = file.content.matchAll(/(?:from\s*|import\s*)["']([^"']+)["']/g);
-    for (const match of imports) {
-      const specifier = match[1];
-      if (specifier === "react" || specifier === "react/jsx-runtime" || specifier === "next" || specifier.startsWith("next/")) continue;
-      if (specifier.startsWith("@/components/")) {
-        const stem = `components/${specifier.slice("@/components/".length)}`;
-        if (![stem, `${stem}.tsx`, `${stem}.ts`, `${stem}.css`, `${stem}/index.tsx`, `${stem}/index.ts`].some((path) => available.has(path))) {
-          throw new ModelError(`A generated file imports a component that was not included (${specifier}). Try generating again.`);
-        }
-        continue;
-      }
-      if (specifier.startsWith("./") || specifier.startsWith("../")) {
-        const base = file.path.split("/").slice(0, -1).join("/");
-        const stem = `${base}/${specifier}`.split("/").reduce<string[]>((segments, part) => {
-          if (part === "..") segments.pop();
-          else if (part !== "." && part) segments.push(part);
-          return segments;
-        }, []).join("/");
-        if (![stem, `${stem}.tsx`, `${stem}.ts`, `${stem}.css`, `${stem}/index.tsx`, `${stem}/index.ts`].some((path) => available.has(path))) {
-          throw new ModelError(`A generated file imports a file that was not included (${specifier}). Try generating again.`);
-        }
-        continue;
-      }
-      throw new ModelError(`The generated project requested an unsupported dependency (${specifier}). Try generating again.`);
-    }
-  }
-  return files;
 }
 
 function scaffold(summary: string, goal: string): ZipEntry[] {

@@ -5,6 +5,7 @@ import type { FormEvent } from "react";
 import Link from "next/link";
 import type { RepositoryAnalysis } from "@/lib/github/analysis";
 import type { MigrationPlan, PlanItem } from "@/lib/migration/plan";
+import type { AuditReport } from "@/lib/audit/types";
 
 type AnalysisState =
   | { status: "idle" }
@@ -24,6 +25,12 @@ type GenerationState =
   | { status: "error"; message: string }
   | { status: "success"; fileCount: number; sourceFileCount: number; validation: string; build: string; rootRoute: string };
 
+type AuditState =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "error"; message: string }
+  | { status: "success"; report: AuditReport; markdown: string };
+
 function formatCount(count: number) {
   return new Intl.NumberFormat("en", { notation: "compact" }).format(count);
 }
@@ -35,6 +42,9 @@ export default function Home() {
   const [planState, setPlanState] = useState<PlanState>({ status: "idle" });
   const [planReviewed, setPlanReviewed] = useState(false);
   const [generationState, setGenerationState] = useState<GenerationState>({ status: "idle" });
+  const [auditState, setAuditState] = useState<AuditState>({ status: "idle" });
+  const [zipFile, setZipFile] = useState<File | null>(null);
+  const [zipAuditState, setZipAuditState] = useState<AuditState>({ status: "idle" });
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -42,6 +52,7 @@ export default function Home() {
     setPlanState({ status: "idle" });
     setPlanReviewed(false);
     setGenerationState({ status: "idle" });
+    setAuditState({ status: "idle" });
 
     try {
       const response = await fetch("/api/repositories/analyze", {
@@ -78,6 +89,68 @@ export default function Home() {
         message: "The request did not reach StackShift. Check your connection and try again.",
       });
     }
+  }
+
+  async function handleRunAudit() {
+    if (analysisState.status !== "success") return;
+    setAuditState({ status: "loading" });
+    try {
+      const response = await fetch("/api/repositories/audit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ analysis: analysisState.analysis }),
+      });
+      const data = await response.json() as { report?: AuditReport; markdown?: string; error?: string };
+      if (!response.ok || !data.report || typeof data.markdown !== "string") {
+        setAuditState({ status: "error", message: data.error ?? "The code audit could not be completed. Please try again." });
+        return;
+      }
+      setAuditState({ status: "success", report: data.report, markdown: data.markdown });
+    } catch {
+      setAuditState({ status: "error", message: "The audit request did not reach StackShift. Check your connection and try again." });
+    }
+  }
+
+  function handleDownloadAudit() {
+    if (auditState.status !== "success") return;
+    const objectUrl = URL.createObjectURL(new Blob([auditState.markdown], { type: "text/markdown;charset=utf-8" }));
+    const anchor = document.createElement("a");
+    anchor.href = objectUrl;
+    anchor.download = "CODE-AUDIT-REPORT.md";
+    document.body.append(anchor);
+    anchor.click();
+    anchor.remove();
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1_000);
+  }
+
+  async function handleUploadAudit() {
+    if (!zipFile) return;
+    setZipAuditState({ status: "loading" });
+    try {
+      const form = new FormData();
+      form.set("file", zipFile);
+      const response = await fetch("/api/repositories/audit-upload", { method: "POST", body: form });
+      const data = await response.json() as { report?: AuditReport; markdown?: string; error?: string };
+      if (!response.ok || !data.report || typeof data.markdown !== "string") {
+        setZipAuditState({ status: "error", message: data.error ?? "The ZIP audit could not be completed. Please try again." });
+        return;
+      }
+      setZipAuditState({ status: "success", report: data.report, markdown: data.markdown });
+    } catch {
+      setZipAuditState({ status: "error", message: "The ZIP upload did not reach StackShift. Check your connection and try again." });
+    }
+  }
+
+  function handleDownloadZipAudit() {
+    if (zipAuditState.status !== "success") return;
+    const objectUrl = URL.createObjectURL(new Blob([zipAuditState.markdown], { type: "text/markdown;charset=utf-8" }));
+    const anchor = document.createElement("a");
+    anchor.href = objectUrl;
+    anchor.download = "CODE-AUDIT-REPORT.md";
+    document.body.append(anchor);
+    anchor.click();
+    anchor.remove();
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1_000);
   }
 
   async function handleCreatePlan() {
@@ -209,6 +282,7 @@ export default function Home() {
                 onChange={(event) => {
                   setRepositoryUrl(event.target.value);
                   setAnalysisState({ status: "idle" });
+                  setAuditState({ status: "idle" });
                   setPlanState({ status: "idle" });
                   setPlanReviewed(false);
                   setGenerationState({ status: "idle" });
@@ -255,6 +329,23 @@ export default function Home() {
             </button>
           </form>
 
+          <section className="zip-upload" aria-labelledby="zip-upload-title">
+            <div className="zip-upload-heading"><div><p className="card-kicker">ALTERNATIVE SOURCE</p><h3 id="zip-upload-title">Audit a project ZIP</h3></div><span>.ZIP · MAX 10 MiB</span></div>
+            <label htmlFor="project-zip">PROJECT ARCHIVE</label>
+            <input id="project-zip" type="file" accept=".zip,application/zip" aria-describedby="zip-help zip-error" onChange={(event) => { setZipFile(event.target.files?.[0] ?? null); setZipAuditState({ status: "idle" }); }} />
+            <p className="field-help" id="zip-help">ZIP only. Secret files, installed dependencies, build output, and unsupported file types are excluded. The archive is inspected in memory; project code is not executed. Exact npm package names and versions may be sent to OSV for advisory checks.</p>
+            <button className="submit-button zip-audit-button" type="button" disabled={!zipFile || zipAuditState.status === "loading"} onClick={handleUploadAudit}>
+              {zipAuditState.status === "loading" ? <><span className="spinner" aria-hidden="true" /> Validating archive and auditing…</> : <>Upload ZIP and audit <span aria-hidden="true">↑</span></>}
+            </button>
+            <p className="error-message" id="zip-error" role="alert">{zipAuditState.status === "error" ? zipAuditState.message : ""}</p>
+          </section>
+          {zipAuditState.status === "success" && <section className="repo-result zip-audit-result" aria-labelledby="zip-result-title">
+            <div className="result-topline"><span className="result-status is-supported"><span /> ARCHIVE VALIDATED · REPORT READY</span><button className="audit-download" type="button" onClick={handleDownloadZipAudit}>Download report</button></div>
+            <h3 id="zip-result-title">{zipAuditState.report.source.label}</h3>
+            <p className="audit-archive-revision">Archive SHA-256 <code>{zipAuditState.report.source.revision}</code></p>
+            <AuditReview report={zipAuditState.report} />
+          </section>}
+
           <div className="card-footnote">
             <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M10 2.5 3.75 5v4.38c0 3.87 2.67 7.49 6.25 8.37 3.58-.88 6.25-4.5 6.25-8.37V5L10 2.5Z" /><path d="m7.5 10 1.67 1.67L12.92 8" /></svg>
             <span>Read-only inspection. StackShift never runs repository scripts.</span>
@@ -288,6 +379,18 @@ export default function Home() {
                   <div><h4>Route candidates</h4>{analysis.profile.routeCandidates.length ? <ul>{analysis.profile.routeCandidates.slice(0, 8).map((path) => <li key={path}><code>{path}</code></li>)}</ul> : <p>No route files detected from filenames.</p>}</div>
                 </div>
                 <p className="inspection-disclaimer">This is a source profile based on the file tree and package manifest. It has not generated or validated an application.</p>
+                <section className="audit-panel" aria-labelledby="audit-title">
+                  <div className="audit-heading">
+                    <div><p className="card-kicker">DETERMINISTIC CHECKS · PINNED COMMIT</p><h4 id="audit-title">Source code audit</h4></div>
+                    {auditState.status === "success" && <button className="audit-download" type="button" onClick={handleDownloadAudit}>Download report</button>}
+                  </div>
+                  <p className="audit-intro">Scan source files for credential patterns and risky code, parse JavaScript/TypeScript syntax and imports, and check supported npm lockfiles for known advisories. Exact package names and versions are sent to OSV for that advisory check.</p>
+                  <button className="submit-button audit-run" type="button" onClick={handleRunAudit} disabled={auditState.status === "loading" || isBusy}>
+                    {auditState.status === "loading" ? <><span className="spinner" aria-hidden="true" /> Auditing selected files…</> : <>Run source audit <span aria-hidden="true">→</span></>}
+                  </button>
+                  {auditState.status === "error" && <p className="plan-error" role="alert">{auditState.message}</p>}
+                  {auditState.status === "success" && <AuditReview report={auditState.report} />}
+                </section>
                 {analysis.profile.supported && (
                   <>
                     <div className="plan-actions">
@@ -389,5 +492,45 @@ function MigrationPlanReview({
         {generation.status === "success" && <p className="generation-success" role="status">Download started: {generation.fileCount} project and report files. {generation.sourceFileCount} source files were sent after redaction. Validation: {generation.validation}; build: {generation.build}; root route: {generation.rootRoute}. See MIGRATION-REPORT.md for details.</p>}
       </div>
     </section>
+  );
+}
+
+function AuditReview({ report }: { report: AuditReport }) {
+  const totalFindings = Object.values(report.summary).reduce((total, count) => total + count, 0);
+  const findings = report.findings.slice(0, 100);
+
+  return (
+    <div className="audit-result" aria-live="polite">
+      <div className="audit-counts" aria-label="Finding counts by severity">
+        {(["critical", "high", "medium", "low", "info"] as const).map((severity) => (
+          <span className={`audit-count audit-${severity}`} key={severity}><b>{report.summary[severity]}</b>{severity}</span>
+        ))}
+      </div>
+      <p className="audit-coverage"><strong>{report.coverage.scannedFiles}</strong> files scanned · <strong>{report.coverage.omittedEligibleFiles}</strong> eligible files omitted · {report.coverage.scannedBytes.toLocaleString()} bytes</p>
+      <div className="audit-structure-summary"><span><b>{report.structure.parsedFiles}</b> JS/TS parsed</span><span><b>{report.structure.syntaxErrors}</b> syntax errors</span><span><b>{report.structure.unresolvedInternalImports}</b> unresolved imports</span><span><b>{report.structure.undeclaredPackageImports}</b> undeclared packages</span></div>
+      <div className={`audit-dependency-status audit-${report.dependencyAudit.status}`}><strong>Dependency advisory check: {report.dependencyAudit.status}</strong><p>{report.dependencyAudit.message}</p>{report.dependencyAudit.checkedAt && <small>OSV checked {new Date(report.dependencyAudit.checkedAt).toLocaleString()}</small>}</div>
+      <p className="audit-caveat">{report.coverage.note}</p>
+      <details className="audit-not-run"><summary>Files scanned</summary><ul>{report.coverage.scannedPaths.map((path) => <li key={path}><code>{path}</code></li>)}</ul></details>
+      {report.coverage.metadataPaths.length > 0 && <details className="audit-not-run"><summary>Dependency metadata</summary><ul>{report.coverage.metadataPaths.map((path) => <li key={path}><code>{path}</code></li>)}</ul></details>}
+      {report.coverage.exclusions.length > 0 && <details className="audit-not-run"><summary>Files excluded or omitted</summary><ul>{report.coverage.exclusions.map((item) => <li key={item}>{item}</li>)}</ul></details>}
+      {totalFindings === 0 ? <p className="audit-empty">No matches for the enabled rules were found in the scanned files.</p> : (
+        <div className="audit-findings">
+          {findings.map((finding) => (
+            <article className="audit-finding" key={finding.id}>
+              <div className="audit-finding-top"><span className={`audit-severity audit-${finding.severity}`}>{finding.severity}</span><span>{finding.category}</span><span>{finding.confidence} confidence</span></div>
+              <h5>{finding.title}</h5>
+              <p className="audit-location"><code>{finding.file}{finding.line ? `:${finding.line}${finding.column ? `:${finding.column}` : ""}` : ""}</code> · <code>{finding.ruleId}</code></p>
+              <pre>{finding.evidence}</pre>
+              <p>{finding.explanation}</p>
+              <p><strong>Suggested action:</strong> {finding.recommendation}</p>
+              {finding.advisoryUrl && <p><a className="audit-advisory-link" href={finding.advisoryUrl} target="_blank" rel="noreferrer">Review {finding.advisoryId} in OSV ↗</a></p>}
+            </article>
+          ))}
+          {totalFindings > findings.length && <p className="audit-caveat">Showing the first {findings.length} of {totalFindings} findings. Download the report for the complete list.</p>}
+        </div>
+      )}
+      <details className="audit-not-run"><summary>Checks not run</summary><ul>{report.checksNotRun.map((check) => <li key={check}>{check}</li>)}</ul></details>
+      <p className="audit-disclaimer">Deterministic pattern matches are not a complete security or quality review. Confirm findings in context before acting on them.</p>
+    </div>
   );
 }

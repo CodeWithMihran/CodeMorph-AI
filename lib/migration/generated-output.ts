@@ -1,0 +1,112 @@
+import { builtinModules } from "node:module";
+import * as ts from "typescript";
+import { isJsonRecord } from "@/lib/github/api";
+import { containsCredentialPattern } from "@/lib/github/source";
+import { ModelError, type GeneratedFile } from "./model";
+
+const MAX_OUTPUT_FILES = 24;
+const MAX_OUTPUT_FILE_BYTES = 40_000;
+const MAX_OUTPUT_BYTES = 250_000;
+
+function validGeneratedPath(path: string) {
+  if (path.length > 200 || path.startsWith("/") || path.includes("\\") || path.includes(":") || path.includes("\u0000")) return false;
+  const segments = path.split("/");
+  if (segments.some((part) => !part || part === "." || part === ".." || part.startsWith("."))) return false;
+  if (!/^(?:app\/(?!api\/)[a-zA-Z0-9_./-]+|components\/[a-zA-Z0-9_./-]+)\.(?:tsx?|css)$/.test(path)) return false;
+  if (["app/layout.tsx", "package.json", "tsconfig.json", "next.config.ts"].includes(path)) return false;
+  return true;
+}
+
+function moduleSpecifiers(file: GeneratedFile) {
+  const source = ts.createSourceFile(file.path, file.content, ts.ScriptTarget.Latest, false,
+    file.path.endsWith(".tsx") ? ts.ScriptKind.TSX : file.path.endsWith(".ts") ? ts.ScriptKind.TS : ts.ScriptKind.JSX);
+  const specifiers: string[] = [];
+  const add = (value: ts.Expression | undefined) => {
+    if (value && ts.isStringLiteralLike(value)) specifiers.push(value.text);
+  };
+  const visit = (node: ts.Node) => {
+    if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) add(node.moduleSpecifier);
+    else if (ts.isImportTypeNode(node) && ts.isLiteralTypeNode(node.argument)) add(node.argument.literal as ts.Expression);
+    else if (ts.isCallExpression(node)) {
+      if (node.expression.kind === ts.SyntaxKind.ImportKeyword) {
+        if (node.arguments.length === 0 || !ts.isStringLiteralLike(node.arguments[0])) {
+          throw new ModelError("The generated output used a computed dynamic import that cannot be safely validated.");
+        }
+        add(node.arguments[0]);
+      }
+      else if (ts.isIdentifier(node.expression) && node.expression.text === "require" && node.arguments.length === 1) add(node.arguments[0]);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return specifiers;
+}
+
+function packageRoot(specifier: string) {
+  if (specifier.startsWith("@")) return specifier.split("/").slice(0, 2).join("/");
+  return specifier.split("/")[0];
+}
+
+function isNodeBuiltin(specifier: string) {
+  const unprefixed = specifier.replace(/^node:/, "");
+  return specifier.startsWith("node:") || builtinModules.includes(unprefixed);
+}
+
+export function validateGeneratedFiles(value: unknown): GeneratedFile[] {
+  if (!Array.isArray(value) || value.length < 2 || value.length > MAX_OUTPUT_FILES) {
+    throw new ModelError("The model generated an incomplete or oversized file set. Try again with a smaller source.");
+  }
+  const files: GeneratedFile[] = [];
+  const seen = new Set<string>();
+  let totalBytes = 0;
+  for (const item of value) {
+    if (!isJsonRecord(item) || typeof item.path !== "string" || typeof item.content !== "string" || !validGeneratedPath(item.path)) {
+      throw new ModelError("The model returned an invalid project file path. The output was blocked.");
+    }
+    if (seen.has(item.path)) throw new ModelError("The model returned duplicate project files. Try generating again.");
+    const size = Buffer.byteLength(item.content, "utf8");
+    if (size > MAX_OUTPUT_FILE_BYTES) throw new ModelError("A generated file exceeded the output size limit.");
+    if (containsCredentialPattern(item.content)) throw new ModelError("The generated output contained a credential-like value and was blocked. Try again.");
+    if (/\b(?:eval\s*\(|new\s+Function\s*\(|require\s*\()/i.test(item.content)) {
+      throw new ModelError("The generated output used a blocked dynamic-code or operating-system API.");
+    }
+    totalBytes += size;
+    if (totalBytes > MAX_OUTPUT_BYTES) throw new ModelError("The generated project exceeded the total output size limit.");
+    seen.add(item.path);
+    files.push({ path: item.path, content: item.content });
+  }
+  if (!seen.has("app/page.tsx") || !seen.has("app/globals.css")) {
+    throw new ModelError("The model did not return the required Next.js page and stylesheet. Try again.");
+  }
+
+  const available = new Set([...seen, "app/layout.tsx", "package.json", "tsconfig.json", "next.config.ts", ".gitignore", "README.md", "MIGRATION-REPORT.md"]);
+  for (const file of files) {
+    for (const specifier of moduleSpecifiers(file)) {
+      if (isNodeBuiltin(specifier)) {
+        throw new ModelError("The generated output imported a Node.js built-in module, which is not allowed.");
+      }
+      if (specifier === "react" || specifier === "react/jsx-runtime" || specifier === "next" || specifier.startsWith("next/")) continue;
+      if (specifier.startsWith("@/components/")) {
+        const stem = `components/${specifier.slice("@/components/".length)}`;
+        if (![stem, `${stem}.tsx`, `${stem}.ts`, `${stem}.css`, `${stem}/index.tsx`, `${stem}/index.ts`].some((path) => available.has(path))) {
+          throw new ModelError(`A generated file imports a component that was not included (${specifier}). Try generating again.`);
+        }
+        continue;
+      }
+      if (specifier.startsWith("./") || specifier.startsWith("../")) {
+        const base = file.path.split("/").slice(0, -1).join("/");
+        const stem = `${base}/${specifier}`.split("/").reduce<string[]>((segments, part) => {
+          if (part === "..") segments.pop();
+          else if (part !== "." && part) segments.push(part);
+          return segments;
+        }, []).join("/");
+        if (![stem, `${stem}.tsx`, `${stem}.ts`, `${stem}.css`, `${stem}/index.tsx`, `${stem}/index.ts`].some((path) => available.has(path))) {
+          throw new ModelError(`A generated file imports a file that was not included (${specifier}). Try generating again.`);
+        }
+        continue;
+      }
+      throw new ModelError(`The generated project requested an unsupported dependency (${packageRoot(specifier)}). Try generating again.`);
+    }
+  }
+  return files;
+}

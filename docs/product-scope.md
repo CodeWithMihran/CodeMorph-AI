@@ -37,7 +37,7 @@ A repository can be recognized but still be unsupported. The UI and report must 
 
 - Arbitrary source or target frameworks; source-to-target support must be explicitly listed.
 - Private GitHub repositories, GitHub write access, pull-request creation, and account linking.
-- Local folder or ZIP upload.
+- Local folder upload or ZIP-based migration. (ZIP archives are currently accepted for source auditing only.)
 - Native mobile apps or deployment to a hosting provider.
 - Recreating backend business logic, databases, authentication, payments, or third-party integrations without explicit support and required configuration.
 - Claiming visual equivalence, complete feature parity, or successful functionality without checks that support those claims.

@@ -4,7 +4,7 @@ CodeMorph-AI is a work in progress: a platform intended to analyze a supported w
 
 ### Current implementation
 
-The current demo accepts a public GitHub repository URL and a migration goal, then displays a source profile and a reviewable rules-based plan. It recognizes static HTML sites and React + Vite projects as supported source paths and explains when it recognizes an unsupported framework. With an OpenAI API key configured, the user can approve the plan and generate a ZIP containing a Next.js + TypeScript project and migration report. The generator reads a bounded set of source files from the pinned commit, redacts common credential patterns, excludes secret/config files, and never runs repository code in the web server. Generated output is sent to a separate, disposable, network-disabled Docker worker for a production build and root-route HTTP check when the validator image is available. Binary assets are not copied.
+The current demo accepts a public GitHub repository URL for inspection, auditing, and migration planning. It also accepts a ZIP archive for a source audit only; ZIP-based migration is not implemented. The audit runs bounded deterministic checks for source patterns, JavaScript/TypeScript syntax and imports, and supported npm lockfile advisories. Exact npm package names and versions are sent to OSV for advisory lookup. The migration flow recognizes static HTML sites and React + Vite projects, then shows a reviewable rules-based plan. With an OpenAI API key configured, the user can approve that plan and generate a ZIP containing a Next.js + TypeScript project and migration report. The generator reads a bounded set of source files from the pinned commit, redacts common credential patterns, excludes secret/config files, and never runs repository code in the web server. Generated output is sent to a separate, disposable, network-disabled Docker worker for a production build and root-route HTTP check when the validator image is available. Binary assets are not copied.
 
 ## First release
 
@@ -20,7 +20,7 @@ StackShift must distinguish what it preserved, changed, newly generated, could n
 
 ## First-release boundaries
 
-The first release will not promise support for arbitrary frameworks or target stacks. It will not initially accept private repositories, uploaded folders or ZIP files, mobile applications, or projects that depend on complex backends and external services. Such support can be considered after the public-repository-to-Next.js flow is reliable.
+The first release will not promise support for arbitrary frameworks or target stacks. Migration currently accepts public GitHub repositories only; ZIP archives are supported for auditing, not migration. Private repositories, mobile applications, and projects that depend on complex backends and external services remain outside the supported migration path. Such support can be considered after the public-repository-to-Next.js flow is reliable.
 
 ## Completion criteria
 

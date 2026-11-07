@@ -1,4 +1,5 @@
 import { githubJson, GitHubApiError, isJsonRecord, MAX_PACKAGE_JSON_BYTES } from "@/lib/github/api";
+import { containsSecret, redactSecretText } from "@/lib/security/secrets";
 
 const MAX_TREE_FILES = 100_000;
 const MAX_SOURCE_FILES = 16;
@@ -29,15 +30,7 @@ function sourcePriority(path: string) {
 }
 
 export function containsCredentialPattern(input: string) {
-  return /-----BEGIN [A-Z ]*PRIVATE KEY-----|\b(?:sk-[A-Za-z0-9_-]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|AKIA[A-Z0-9]{16})\b|(?:api[_-]?key|client[_-]?secret|access[_-]?token|auth[_-]?token|password|secret)\s*[:=]\s*["'][^"']{8,}["']/i.test(input);
-}
-
-function redactSecrets(input: string) {
-  return input
-    .replace(/-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g, "[REDACTED PRIVATE KEY]")
-    .replace(/\b(?:sk-[A-Za-z0-9_-]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|AKIA[A-Z0-9]{16})\b/g, "[REDACTED TOKEN]")
-    .replace(/(["']?(?:api[_-]?key|client[_-]?secret|access[_-]?token|auth[_-]?token|password|secret)["']?\s*:\s*["'])([^"']{8,})(["'])/gi, "$1[REDACTED]$3")
-    .replace(/(\b(?:api[_-]?key|client[_-]?secret|access[_-]?token|auth[_-]?token|password|secret)\b\s*=\s*["'])([^"']{8,})(["'])/gi, "$1[REDACTED]$3");
+  return containsSecret(input);
 }
 
 function parseBlob(blob: unknown, expectedBytes: number, maxBytes = MAX_FILE_BYTES): string {
@@ -50,7 +43,7 @@ function parseBlob(blob: unknown, expectedBytes: number, maxBytes = MAX_FILE_BYT
   }
   const text = content.toString("utf8");
   if (text.includes("\u0000")) throw new GitHubApiError("A selected source file is binary and cannot be sent for code generation.", 422);
-  return redactSecrets(text);
+  return redactSecretText(text);
 }
 
 function sanitizePackageManifest(content: string) {
@@ -94,10 +87,11 @@ export async function readMigrationSource(owner: string, repository: string, com
   if (manifestEntry && ((manifestEntry.size as number) < 0 || (manifestEntry.size as number) > MAX_PACKAGE_JSON_BYTES)) {
     throw new GitHubApiError("The root package.json is too large to inspect safely.", 413);
   }
-  const entries = treeEntries.filter((entry) =>
-    entry.path !== "package.json" && (entry.size as number) >= 0 && (entry.size as number) <= MAX_FILE_BYTES &&
-    /\.(html?|tsx?|jsx?|css|scss|sass|json)$/i.test(entry.path as string),
-  ).sort((a, b) => sourcePriority(a.path as string) - sourcePriority(b.path as string) || (a.path as string).localeCompare(b.path as string));
+  const candidateEntries = treeEntries.filter((entry) =>
+    entry.path !== "package.json" && /\.(html?|tsx?|jsx?|css|scss|sass|json)$/i.test(entry.path as string),
+  );
+  const entries = candidateEntries.filter((entry) => (entry.size as number) >= 0 && (entry.size as number) <= MAX_FILE_BYTES)
+    .sort((a, b) => sourcePriority(a.path as string) - sourcePriority(b.path as string) || (a.path as string).localeCompare(b.path as string));
 
   let manifestFile: SourceFile | null = null;
   if (manifestEntry) {
@@ -148,8 +142,10 @@ export async function readMigrationSource(owner: string, repository: string, com
   return {
     files: result,
     fileCount: result.length,
+    repositoryFileCount: tree.tree.filter((entry) => isJsonRecord(entry) && entry.type === "blob" && typeof entry.path === "string").length,
+    eligibleTextFileCount: candidateEntries.length + (manifestFile ? 1 : 0),
     totalBytes: result.reduce((total, file) => total + Buffer.byteLength(file.content, "utf8"), 0),
-    excludedFileCount: Math.max(0, entries.length + (manifestFile ? 1 : 0) - keyFiles.length),
+    excludedFileCount: Math.max(0, candidateEntries.length + (manifestFile ? 1 : 0) - keyFiles.length),
     assetPaths,
     keyFiles,
     routeCandidates,
