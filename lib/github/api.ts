@@ -4,7 +4,7 @@ const MAX_JSON_BYTES = 8 * 1024 * 1024;
 const MAX_PACKAGE_BYTES = 128 * 1024;
 
 export class GitHubApiError extends Error {
-  constructor(message: string, readonly status: number) {
+  constructor(message: string, readonly status: number, readonly headers?: Record<string, string>) {
     super(message);
   }
 }

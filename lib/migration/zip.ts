@@ -79,3 +79,38 @@ export function createZip(entries: ZipEntry[]) {
   end.writeUInt16LE(0, 20);
   return Buffer.concat([...localParts, centralDirectory, end]);
 }
+
+export function unpackStoredZip(buffer: ArrayBuffer | Buffer): ZipEntry[] {
+  const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const entries: ZipEntry[] = [];
+  const decoder = new TextDecoder("utf-8");
+
+  let offset = 0;
+  while (offset + 30 <= bytes.length) {
+    const signature = view.getUint32(offset, true);
+    if (signature !== 0x04034b50) break;
+
+    const uncompressedSize = view.getUint32(offset + 22, true);
+    const nameLength = view.getUint16(offset + 26, true);
+    const extraLength = view.getUint16(offset + 28, true);
+
+    const nameStart = offset + 30;
+    const nameBytes = bytes.subarray(nameStart, nameStart + nameLength);
+    const name = decoder.decode(nameBytes);
+
+    const dataStart = nameStart + nameLength + extraLength;
+    if (dataStart + uncompressedSize > bytes.length) break;
+
+    const dataBytes = bytes.subarray(dataStart, dataStart + uncompressedSize);
+    const content = decoder.decode(dataBytes);
+
+    if (name && !name.endsWith("/")) {
+      entries.push({ path: name, content });
+    }
+
+    offset = dataStart + uncompressedSize;
+  }
+
+  return entries;
+}

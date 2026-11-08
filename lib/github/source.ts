@@ -17,10 +17,11 @@ function shouldNeverRead(path: string) {
     segments.some((segment) => segment.startsWith("."));
 }
 
-function sourcePriority(path: string) {
+export function sourcePriority(path: string) {
   const lower = path.toLowerCase();
   if (lower === "package.json") return 0;
   if (lower === "index.html") return 1;
+  if (/^(src\/)?(?:app|router|routes)\.(tsx?|jsx?)$/.test(lower)) return 2;
   if (/^src\/(main|index|app)\.(tsx?|jsx?)$/.test(lower)) return 2;
   if (/^(src\/)?(app|pages)\/.*\.(tsx?|jsx?)$/.test(lower)) return 3;
   if (/\.(tsx?|jsx?)$/.test(lower) && /(^|\/)(components?|sections?)\//.test(lower)) return 4;
@@ -46,7 +47,7 @@ function parseBlob(blob: unknown, expectedBytes: number, maxBytes = MAX_FILE_BYT
   return redactSecretText(text);
 }
 
-function sanitizePackageManifest(content: string) {
+export function sanitizePackageManifest(content: string) {
   try {
     const manifest: unknown = JSON.parse(content);
     if (!isJsonRecord(manifest)) return "{\"note\":\"package.json was present but could not be summarized\"}";
@@ -136,7 +137,7 @@ export async function readMigrationSource(owner: string, repository: string, com
   const keyFiles = [...(manifestFile ? [manifestFile.path] : []), ...selected.map((entry) => entry.path as string)];
   const routeCandidates = treeEntries
     .map((entry) => entry.path as string)
-    .filter((path) => /(^|\/)(index|page)\.html?$|(^|\/)(pages|app)\/.*\.(tsx?|jsx?)$/.test(path))
+    .filter((path) => /\.html?$/i.test(path) || /(^|\/)(pages|app)\/.*\.(tsx?|jsx?)$/.test(path))
     .filter((path) => !path.split("/").some((segment) => segment.startsWith(".")))
     .slice(0, 20);
   return {

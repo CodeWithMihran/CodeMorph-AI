@@ -2,6 +2,8 @@ import { GitHubApiError } from "@/lib/github/api";
 import { auditSourceFiles, renderAuditMarkdown } from "@/lib/audit/engine";
 import { auditDependencyAdvisories } from "@/lib/audit/dependencies";
 import { readZipSourceManifest, ZIP_LIMITS } from "@/lib/source/zip";
+import { assertSameOrigin } from "@/lib/security/origin";
+import { assertRateLimit } from "@/lib/security/rate-limit";
 
 const MAX_MULTIPART_BYTES = ZIP_LIMITS.archiveBytes + 1024 * 1024;
 
@@ -39,6 +41,8 @@ async function readCappedBody(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    assertSameOrigin(request);
+    const rateHeaders = assertRateLimit(request, "audit");
     const contentType = request.headers.get("content-type") ?? "";
     if (!/^multipart\/form-data\s*;/i.test(contentType)) {
       throw new GitHubApiError("Upload a ZIP archive using multipart form data.", 415);
@@ -60,9 +64,11 @@ export async function POST(request: Request) {
     const manifest = readZipSourceManifest(Buffer.from(await upload.arrayBuffer()), upload.name);
     const staticReport = auditSourceFiles({ manifest });
     const report = await auditDependencyAdvisories(manifest, staticReport);
-    return Response.json({ report, markdown: renderAuditMarkdown(report) }, { headers: { "Cache-Control": "no-store" } });
+    return Response.json({ report, markdown: renderAuditMarkdown(report) }, { headers: { "Cache-Control": "no-store", ...rateHeaders } });
   } catch (error) {
-    if (error instanceof GitHubApiError) return Response.json({ error: error.message }, { status: error.status });
+    if (error instanceof GitHubApiError) {
+      return Response.json({ error: error.message }, { status: error.status, headers: error.headers });
+    }
     return Response.json({ error: "The ZIP audit could not be completed. Please check the archive and try again." }, { status: 422 });
   }
 }

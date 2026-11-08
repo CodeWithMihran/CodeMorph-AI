@@ -1,0 +1,9 @@
+{
+  "id": "react-router-link-to-expo-link-v1",
+  "sourceFramework": "React + Vite",
+  "target": "expo-router-typescript",
+  "trigger": "react-router-dom",
+  "before": "import { Link } from \"react-router-dom\";\n\nexport default function Screen() {\n  return <Link to=\"/about\">About</Link>;\n}\n",
+  "after": "import { Link } from \"expo-router\";\n\nexport default function Screen() {\n  return <Link href=\"/about\">About</Link>;\n}\n",
+  "resolution": "Replace react-router-dom Link with expo-router Link and change Link's to prop to href."
+}

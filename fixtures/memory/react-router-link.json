@@ -1,0 +1,9 @@
+{
+  "id": "react-router-link-to-next-link-v1",
+  "sourceFramework": "React + Vite",
+  "target": "nextjs-app-router-typescript",
+  "trigger": "react-router-dom",
+  "before": "import { Link } from \"react-router-dom\";\n\nexport default function Page() {\n  return <main><Link to=\"/about\">About</Link></main>;\n}\n",
+  "after": "import Link from \"next/link\";\n\nexport default function Page() {\n  return <main><Link href=\"/about\">About</Link></main>;\n}\n",
+  "resolution": "Replace react-router-dom Link imports with next/link and change Link's to prop to href."
+}

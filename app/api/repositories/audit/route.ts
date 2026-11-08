@@ -4,6 +4,8 @@ import { auditSourceFiles, renderAuditMarkdown } from "@/lib/audit/engine";
 import { auditDependencyAdvisories } from "@/lib/audit/dependencies";
 import type { RepositoryAnalysis } from "@/lib/github/analysis";
 import { readZipSourceManifest } from "@/lib/source/zip";
+import { assertSameOrigin } from "@/lib/security/origin";
+import { assertRateLimit } from "@/lib/security/rate-limit";
 
 const MAX_REQUEST_BYTES = 8_000;
 
@@ -45,7 +47,9 @@ async function readBody(request: Request): Promise<unknown> {
 }
 
 function errorResponse(error: unknown) {
-  if (error instanceof GitHubApiError) return Response.json({ error: error.message }, { status: error.status });
+  if (error instanceof GitHubApiError) {
+    return Response.json({ error: error.message }, { status: error.status, headers: error.headers });
+  }
   if (error instanceof Error && error.name === "TimeoutError") {
     return Response.json({ error: "GitHub took too long to read the source files. Please try again." }, { status: 504 });
   }
@@ -54,6 +58,8 @@ function errorResponse(error: unknown) {
 
 export async function POST(request: Request) {
   try {
+    assertSameOrigin(request);
+    const rateHeaders = assertRateLimit(request, "audit");
     const body = await readBody(request);
     if (!isJsonRecord(body) || !isJsonRecord(body.analysis) || !isJsonRecord(body.analysis.repository) || !isJsonRecord(body.analysis.revision)) {
       throw new GitHubApiError("Inspect a repository before starting its audit.", 400);
@@ -80,7 +86,7 @@ export async function POST(request: Request) {
     const staticReport = auditSourceFiles({ manifest });
     const report = await auditDependencyAdvisories(manifest, staticReport);
 
-    return Response.json({ report, markdown: renderAuditMarkdown(report) }, { headers: { "Cache-Control": "no-store" } });
+    return Response.json({ report, markdown: renderAuditMarkdown(report) }, { headers: { "Cache-Control": "no-store", ...rateHeaders } });
   } catch (error) {
     return errorResponse(error);
   }

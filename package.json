@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "eslint",
     "test": "node --test scripts/test-core.cjs",
-    "validate:fixtures": "node scripts/validate-worker-fixtures.cjs"
+    "validate:fixtures": "node scripts/validate-worker-fixtures.cjs",
+    "evaluate:migrations": "node scripts/evaluate-migrations.cjs",
+    "evaluate:migrations:static": "node scripts/evaluate-migrations.cjs --static-only"
   },
   "dependencies": {
     "next": "16.4.3",

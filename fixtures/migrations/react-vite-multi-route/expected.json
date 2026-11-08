@@ -1,0 +1,14 @@
+{
+  "name": "react-vite-multi-route",
+  "sourceType": "react-vite",
+  "framework": "React + Vite",
+  "repository": "fixture/react-vite-multi-route",
+  "goal": "Migrate both site routes and preserve their distinct page content.",
+  "keyFiles": ["package.json", "src/main.tsx", "src/App.tsx", "src/pages/Home.tsx", "src/pages/About.tsx"],
+  "routeCandidates": ["src/pages/Home.tsx", "src/pages/About.tsx"],
+  "expectedRoutes": ["/", "/about"],
+  "targetAssertions": [
+    { "file": "app/page.tsx", "includes": "Build better things." },
+    { "file": "app/about/page.tsx", "includes": "The people behind Northstar" }
+  ]
+}

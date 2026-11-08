@@ -2,6 +2,8 @@ import { githubJson, GitHubApiError, isJsonRecord, MAX_PACKAGE_JSON_BYTES } from
 import { parseGitHubRepositoryUrl } from "@/lib/github/parse-repository-url";
 import type { RepositoryAnalysis } from "@/lib/github/analysis";
 import { classifySource } from "@/lib/github/classify-source";
+import { evaluateFeasibility } from "@/lib/analysis/feasibility";
+import { assertRateLimit } from "@/lib/security/rate-limit";
 
 const MAX_REQUEST_BYTES = 4_096;
 const MAX_TREE_ENTRIES = 100_000;
@@ -49,8 +51,15 @@ function statusFor(error: unknown) {
 
 export async function POST(request: Request) {
   try {
+    const rateHeaders = assertRateLimit(request, "analyze");
     const body = await readRequest(request);
-    const repositoryUrl = isJsonRecord(body) ? body.repositoryUrl : undefined;
+    const repositoryUrl = isJsonRecord(body)
+      ? typeof body.repositoryUrl === "string"
+        ? body.repositoryUrl
+        : typeof body.repoUrl === "string"
+          ? body.repoUrl
+          : undefined
+      : undefined;
     if (typeof repositoryUrl !== "string" || repositoryUrl.length > 2_048) {
       throw new GitHubApiError("Enter a GitHub repository URL to continue.", 400);
     }
@@ -71,7 +80,10 @@ export async function POST(request: Request) {
       throw new GitHubApiError("GitHub returned incomplete repository details.", 502);
     }
 
-    const commitData = await githubJson(`/repos/${owner}/${repo}/commits/${encodeURIComponent(defaultBranch)}`);
+    const requestedBranch = isJsonRecord(body) && typeof body.branch === "string" && body.branch.trim() ? body.branch.trim() : null;
+    const branchToInspect = requestedBranch || defaultBranch;
+
+    const commitData = await githubJson(`/repos/${owner}/${repo}/commits/${encodeURIComponent(branchToInspect)}`);
     if (!isJsonRecord(commitData) || typeof commitData.sha !== "string" || !isJsonRecord(commitData.commit) || !isJsonRecord(commitData.commit.tree) || typeof commitData.commit.tree.sha !== "string") {
       throw new GitHubApiError("GitHub could not resolve the repository's default branch to a commit.", 502);
     }
@@ -114,6 +126,16 @@ export async function POST(request: Request) {
     const keyFiles = ["package.json", "index.html", "vite.config.ts", "vite.config.js", "vite.config.mjs", "vite.config.mts", "src/main.tsx", "src/main.jsx", "src/App.tsx", "src/App.jsx"]
       .filter((path) => files.has(path) || entries.some((entry) => entry.path === path));
 
+    const feasibility = evaluateFeasibility({
+      sourceType: classification.sourceType,
+      framework: classification.framework,
+      supportReason: classification.supportReason,
+      filePaths,
+      keyFiles,
+      routeCandidates,
+      manifest,
+    });
+
     const analysis: RepositoryAnalysis = {
       repository: {
         fullName,
@@ -131,9 +153,10 @@ export async function POST(request: Request) {
         keyFiles,
         routeCandidates,
         inspectedAt: new Date().toISOString(),
+        feasibility,
       },
     };
-    return Response.json({ analysis });
+    return Response.json({ analysis, feasibility }, { headers: rateHeaders });
   } catch (error) {
     if (!(error instanceof GitHubApiError) && error instanceof Error && error.name === "TimeoutError") {
       return Response.json({ error: "GitHub took too long to respond. Please try again." }, { status: 504 });
@@ -142,6 +165,7 @@ export async function POST(request: Request) {
       return Response.json({ error: "GitHub inspection was interrupted. Please try again." }, { status: 502 });
     }
     const message = error instanceof GitHubApiError ? error.message : "Repository inspection failed. Please try again.";
-    return Response.json({ error: message }, { status: statusFor(error) });
+    const headers = error instanceof GitHubApiError ? error.headers : undefined;
+    return Response.json({ error: message }, { status: statusFor(error), headers });
   }
 }

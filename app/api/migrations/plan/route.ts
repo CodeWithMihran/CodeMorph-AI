@@ -1,6 +1,10 @@
 import { GitHubApiError, isJsonRecord } from "@/lib/github/api";
 import { inspectMigrationSource } from "@/lib/github/migration-source";
 import { createMigrationPlan, type PlanInput } from "@/lib/migration/plan";
+import { analyzeSourceRoutes } from "@/lib/migration/source-routes";
+import { assertSameOrigin } from "@/lib/security/origin";
+import { assertRateLimit } from "@/lib/security/rate-limit";
+import { evaluateFeasibility } from "@/lib/analysis/feasibility";
 
 const MAX_BODY_BYTES = 12_000;
 const MAX_GOAL_LENGTH = 500;
@@ -35,12 +39,16 @@ async function readBody(request: Request): Promise<unknown> {
 
 export async function POST(request: Request) {
   try {
+    assertSameOrigin(request);
+    const rateHeaders = assertRateLimit(request, "plan");
     const body = await readBody(request);
     if (!isJsonRecord(body) || !isJsonRecord(body.analysis) || !isJsonRecord(body.analysis.repository) || !isJsonRecord(body.analysis.revision) || !isJsonRecord(body.analysis.profile)) {
       throw new GitHubApiError("The inspected repository identity is missing or invalid. Inspect the repository again.", 400);
     }
 
     const { repository, revision, profile } = body.analysis;
+    const targetRaw = (typeof body.target === "string" ? body.target : "").toLowerCase();
+    const target = targetRaw.includes("expo") ? "expo" : "nextjs";
     const goal = body.goal;
     if (typeof goal !== "string" || goal.trim().length < 8 || goal.length > MAX_GOAL_LENGTH) {
       throw new GitHubApiError("Describe the desired application in 8 to 500 characters.", 400);
@@ -53,7 +61,6 @@ export async function POST(request: Request) {
       repositoryUrl: repository.url,
       expectedFullName: repository.fullName,
       commitSha: revision.commitSha,
-      includeSourceFiles: false,
     });
     if (source.sourceType === "unsupported") {
       throw new GitHubApiError("This repository does not match a supported static HTML or React + Vite source project.", 422);
@@ -70,8 +77,20 @@ export async function POST(request: Request) {
       goal: goal.trim(),
       keyFiles: source.keyFiles,
       routeCandidates: source.routeCandidates,
+      routes: analyzeSourceRoutes({ sourceType: source.sourceType, files: source.files, routeCandidates: source.routeCandidates }),
+      target,
     };
-    return Response.json({ plan: createMigrationPlan(input) });
+    const feasibility = evaluateFeasibility({
+      sourceType: source.sourceType,
+      framework: source.framework,
+      supportReason: "Supported source project.",
+      filePaths: source.files.map((f) => f.path),
+      keyFiles: source.keyFiles,
+      routeCandidates: source.routeCandidates,
+      files: source.files,
+      target,
+    });
+    return Response.json({ plan: createMigrationPlan(input), feasibility }, { headers: rateHeaders });
   } catch (error) {
     const timedOut = error instanceof Error && error.name === "TimeoutError";
     const aborted = error instanceof Error && error.name === "AbortError";
@@ -82,6 +101,7 @@ export async function POST(request: Request) {
         ? "GitHub took too long to recheck this repository. Please try again."
         : "Could not create a migration plan because the source could not be rechecked. Please try again.";
     const status = known ? error.status : timedOut ? 504 : aborted ? 502 : 502;
-    return Response.json({ error: message }, { status });
+    const headers = error instanceof GitHubApiError ? error.headers : undefined;
+    return Response.json({ error: message }, { status, headers });
   }
 }

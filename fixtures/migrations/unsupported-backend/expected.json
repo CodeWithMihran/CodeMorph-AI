@@ -1,0 +1,11 @@
+{
+  "name": "unsupported-backend",
+  "sourceType": "unsupported",
+  "framework": "Express",
+  "repository": "fixture/unsupported-backend",
+  "goal": "Turn this backend into a mobile application.",
+  "keyFiles": ["package.json", "src/index.js"],
+  "routeCandidates": [],
+  "expectedRoutes": [],
+  "targetAssertions": []
+}

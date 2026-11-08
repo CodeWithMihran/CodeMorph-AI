@@ -11,6 +11,7 @@ export type ValidationResult = {
   status: "passed" | "failed" | "not-run";
   build: "passed" | "failed" | "not-run";
   rootRoute: "passed" | "failed" | "not-run";
+  routeChecks: Array<{ path: string; status: "passed" | "failed" | "not-run" }>;
   durationMs: number;
   message: string;
   diagnostics: string[];
@@ -93,29 +94,56 @@ function cleanDiagnostics(text: string) {
     .split(/\r?\n/).map((line) => line.slice(0, 500)).filter(Boolean).slice(-35);
 }
 
-function unavailable(message: string, durationMs = 0): ValidationResult {
-  return { status: "not-run", build: "not-run", rootRoute: "not-run", durationMs, message, diagnostics: [] };
+export function normalizeExpectedRoutes(routes: string[]) {
+  if (!Array.isArray(routes) || routes.length > 25 || routes.some((route) =>
+    typeof route !== "string" || route.length > 200 || !route.startsWith("/") || route.startsWith("//") ||
+    route.includes("?") || route.includes("#") || route.includes("\\") || route.split("/").some((part) => part === "." || part === "..") ||
+    !/^\/(?:[A-Za-z0-9._~-]+(?:\/[A-Za-z0-9._~-]+)*)?$/.test(route)
+  )) return null;
+  const unique = [...new Set(routes)];
+  if (!unique.includes("/")) unique.unshift("/");
+  return unique;
+}
+
+export function parseRouteCheckMarkers(output: string, expectedRoutes: string[]) {
+  const markers = new Map<number, "passed" | "failed">();
+  for (const match of output.matchAll(/^STACKSHIFT_ROUTE_(\d+)=(passed|failed)$/gm)) {
+    markers.set(Number(match[1]), match[2] as "passed" | "failed");
+  }
+  return expectedRoutes.map((path, index) => ({ path, status: markers.get(index) ?? "not-run" as const }));
+}
+
+function unavailable(message: string, durationMs = 0, expectedRoutes = ["/"]): ValidationResult {
+  const routeChecks = expectedRoutes.map((path) => ({ path, status: "not-run" as const }));
+  return { status: "not-run", build: "not-run", rootRoute: "not-run", routeChecks, durationMs, message, diagnostics: [] };
 }
 
 /** Validates generated files only inside an isolated, network-disabled disposable container. */
-export async function validateGeneratedProject(entries: ZipEntry[]): Promise<ValidationResult> {
+export async function validateGeneratedProject(entries: ZipEntry[], requestedRoutes: string[] = ["/"]): Promise<ValidationResult> {
   const startedAt = Date.now();
+  const expectedRoutes = normalizeExpectedRoutes(requestedRoutes);
+  if (!expectedRoutes) return {
+    status: "failed", build: "not-run", rootRoute: "not-run", routeChecks: [], durationMs: 0,
+    message: "Validation was not run: one or more expected route paths are invalid or exceed the route limit.", diagnostics: [],
+  };
   const configuredImage = process.env.STACKSHIFT_VALIDATOR_IMAGE?.trim();
   const image = configuredImage || DEFAULT_IMAGE;
-  if (!/^[a-zA-Z0-9][a-zA-Z0-9._:/-]{0,180}$/.test(image)) return unavailable("Validation was not run: STACKSHIFT_VALIDATOR_IMAGE has an invalid image name.");
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9._:/-]{0,180}$/.test(image)) return unavailable("Validation was not run: STACKSHIFT_VALIDATOR_IMAGE has an invalid image name.", 0, expectedRoutes);
 
   const dockerVersion = await run("docker", ["--version"], undefined, PREFLIGHT_TIMEOUT_MS);
-  if (dockerVersion.code !== 0) return unavailable("Validation was not run: Docker is unavailable. Install and start Docker Desktop, then build the StackShift validator image.", Date.now() - startedAt);
+  if (dockerVersion.code !== 0) return unavailable("Validation was not run: Docker is unavailable. Install and start Docker Desktop, then build the StackShift validator image.", Date.now() - startedAt, expectedRoutes);
 
   const daemon = await run("docker", ["info", "--format", "{{.ServerVersion}}"], undefined, PREFLIGHT_TIMEOUT_MS);
-  if (daemon.code !== 0) return unavailable("Validation was not run: the Docker daemon is not running or is inaccessible.", Date.now() - startedAt);
+  if (daemon.code !== 0) return unavailable("Validation was not run: the Docker daemon is not running or is inaccessible.", Date.now() - startedAt, expectedRoutes);
 
   const imageCheck = await run("docker", ["image", "inspect", image], undefined, PREFLIGHT_TIMEOUT_MS);
-  if (imageCheck.code !== 0) return unavailable(`Validation was not run: the validator image is missing. Build it with the command in README.md (${image}).`, Date.now() - startedAt);
+  if (imageCheck.code !== 0) return unavailable(`Validation was not run: the validator image is missing. Build it with the command in README.md (${image}).`, Date.now() - startedAt, expectedRoutes);
 
   let input: Buffer;
   try { input = createInputTar(entries); }
-  catch (error) { return { ...unavailable(error instanceof Error ? error.message : "The generated project could not be packaged for validation.", Date.now() - startedAt), status: "failed", build: "failed" }; }
+  catch (error) {
+    return { ...unavailable(error instanceof Error ? error.message : "The generated project could not be packaged for validation.", Date.now() - startedAt, expectedRoutes), status: "failed", build: "failed" };
+  }
 
   const containerName = `stackshift-validation-${randomUUID().replaceAll("-", "").slice(0, 20)}`;
   const result = await run("docker", [
@@ -124,31 +152,35 @@ export async function validateGeneratedProject(entries: ZipEntry[]): Promise<Val
     "--read-only", "--tmpfs", "/workspace:rw,noexec,nosuid,nodev,size=512m,uid=10001,gid=10001",
     "--tmpfs", "/tmp:rw,noexec,nosuid,nodev,size=128m,uid=10001,gid=10001",
     "--cap-drop=ALL", "--security-opt=no-new-privileges", "--user=10001:10001",
+    "--env", `STACKSHIFT_EXPECTED_ROUTES=${Buffer.from(JSON.stringify(expectedRoutes)).toString("base64")}`,
     image,
   ], input, VALIDATION_TIMEOUT_MS);
 
   if (result.timedOut) {
     await run("docker", ["stop", "--time", "1", containerName], undefined, 5_000);
     await run("docker", ["rm", "--force", containerName], undefined, 5_000);
-    return { status: "failed", build: "failed", rootRoute: "not-run", durationMs: Date.now() - startedAt, message: "Validation exceeded the three-minute limit and the worker was stopped.", diagnostics: cleanDiagnostics(result.stdout + result.stderr) };
+    return { status: "failed", build: "failed", rootRoute: "not-run", routeChecks: expectedRoutes.map((path) => ({ path, status: "not-run" })), durationMs: Date.now() - startedAt, message: "Validation exceeded the three-minute limit and the worker was stopped.", diagnostics: cleanDiagnostics(result.stdout + result.stderr) };
   }
   if (result.spawnError || result.code === null) {
-    return unavailable("Validation worker could not be started. Check the Docker installation and retry.", Date.now() - startedAt);
+    return unavailable("Validation worker could not be started. Check the Docker installation and retry.", Date.now() - startedAt, expectedRoutes);
   }
 
   const output = `${result.stdout}\n${result.stderr}`;
   const build = output.match(/^STACKSHIFT_BUILD=(passed|failed|not-run)$/m)?.[1] as ValidationResult["build"] | undefined;
   const rootRoute = output.match(/^STACKSHIFT_ROUTE_ROOT=(passed|failed|not-run)$/m)?.[1] as ValidationResult["rootRoute"] | undefined;
-  if (!build) return { status: "failed", build: "failed", rootRoute: "not-run", durationMs: Date.now() - startedAt, message: "The validation worker exited without returning a build result.", diagnostics: cleanDiagnostics(output) };
+  const routeChecks = parseRouteCheckMarkers(output, expectedRoutes);
+  const actualRootRoute = routeChecks.find((route) => route.path === "/")?.status ?? rootRoute ?? "not-run";
+  if (!build) return { status: "failed", build: "failed", rootRoute: "not-run", routeChecks, durationMs: Date.now() - startedAt, message: "The validation worker exited without returning a build result.", diagnostics: cleanDiagnostics(output) };
 
-  const diagnostics = cleanDiagnostics(output.replace(/^STACKSHIFT_(?:BUILD|ROUTE_ROOT)=.*$/gm, ""));
-  const status = build === "passed" && rootRoute === "passed" ? "passed" : "failed";
+  const diagnostics = cleanDiagnostics(output.replace(/^STACKSHIFT_(?:BUILD|ROUTE_ROOT|ROUTE_\d+)=.*$/gm, ""));
+  const status = build === "passed" && routeChecks.every((route) => route.status === "passed") ? "passed" : "failed";
   return {
     status,
     build,
-    rootRoute: rootRoute ?? "not-run",
+    rootRoute: actualRootRoute,
+    routeChecks,
     durationMs: Date.now() - startedAt,
-    message: status === "passed" ? "The production build passed and the root route returned HTTP 200." : "Validation completed with issues. Review the bounded worker diagnostics and migration limitations.",
+    message: status === "passed" ? `The production build passed and all ${routeChecks.length} expected route(s) returned HTTP 200.` : "Validation completed with issues. Review the bounded worker diagnostics and migration limitations.",
     diagnostics,
   };
 }

@@ -1,3 +1,5 @@
+import type { FeasibilityReport } from "@/lib/analysis/feasibility";
+
 export type RepositoryAnalysis = {
   repository: {
     fullName: string;
@@ -18,5 +20,6 @@ export type RepositoryAnalysis = {
     keyFiles: string[];
     routeCandidates: string[];
     inspectedAt: string;
+    feasibility?: FeasibilityReport;
   };
 };

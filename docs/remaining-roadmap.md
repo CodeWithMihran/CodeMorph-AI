@@ -8,20 +8,20 @@ This roadmap continues from the current repository-to-Next.js prototype. It keep
 | --- | --- | --- |
 | 1. Product definition | Complete | First-release scope and acceptance contract are documented. |
 | 2. Repository submission | Complete | Public GitHub URL validation and metadata lookup are implemented. |
-| 3. Source inspection | Implemented; needs an end-to-end retest | Initial inspection pins a commit. Planning and generation recheck public repo identity and pinned-commit source type/framework using the same classifier. |
-| 4. Migration planning | Implemented; regression-tested | The server derives a rules-based plan from repository metadata and paths at the pinned revision; it does not fetch page source during planning. Browser-supplied framework labels are checked against the server profile, with route-level mismatch coverage. |
+| 3. Source inspection | Implemented; needs a live end-to-end retest | Initial inspection pins a commit. Planning and generation recheck public repo identity and pinned-commit source type/framework using the same classifier. Migration planning reads bounded source files to derive the route inventory. |
+| 4. Migration planning | Implemented; regression-tested | The server derives a rules-based plan from server-read source and file-path evidence at the pinned revision. Common static HTML and JSX React Router paths are captured; nested relative paths are composed, while dynamic, wildcard, computed, and unsupported paths are surfaced for manual review. |
 | 5. Code generation | Implemented; needs an API key and live run | The generator rereads and classifies pinned source server-side, recomputes the canonical plan, and rejects altered profiles/plans before calling OpenAI; route tests assert the model is not called for forged requests. It reads up to 16 bounded files, validates generated paths/content, and returns a ZIP plus report. Binary assets are not copied. |
-| 6. Build and preview validation | Implemented; requires Docker to exercise | Generation streams validated project files into a disposable, non-root, network-disabled Docker worker with resource/time limits; it runs a webpack production build and checks `/` returns HTTP 200. `npm run validate:fixtures` checks valid/invalid cases once Docker is available. |
+| 6. Build and preview validation | Implemented; live worker run pending | Generation streams validated project files into a disposable, non-root, network-disabled Docker worker with resource/time limits; it runs a webpack production build and checks every required static route. A failed build gets one bounded repair attempt; failed builds/routes block ZIP delivery, while unavailable validation is marked unverified. `npm run evaluate:migrations` now runs known-good/invalid worker checks plus migration target fixtures and writes JSON/Markdown reports; a real Docker run is still pending. |
 | 7. Safeguards before a public demo | Planned | Authentication, persistent abuse limits, quotas, and deployment protections remain required. |
-| 8. Migration quality evaluation | Fixtures in progress | Valid/invalid worker fixtures are ready; source-to-target migration fixtures and quality measurements still need to be built and run. |
-| 9. Reliability and product finish | Planned | Durable jobs, cancellation, artifact cleanup, and additional product checks remain. |
+| 8. Migration quality evaluation | Harness implemented; baseline run pending | `npm run evaluate:migrations` checks fixture classification, source route contracts, target routes/content, unsupported-source gating, source immutability, and worker builds/routes. It writes timestamped JSON/Markdown results and distinguishes `unverified` worker checks from failures. Real Docker results, approved live model runs, and broader interaction, accessibility, and visual measurements remain. |
+| 9. Reliability and product finish | In progress | The React Router `Link` to Next.js `Link` rule is gated by a curated before/after transformation fixture plus negative scope cases; dashboard review is required before promotion, and only active rules reach later prompts. Other repair patterns need owned fixtures before they can be learned. Aggregate pass/fail/unverified uses are tracked. Durable jobs, cancellation, shared multi-instance memory, broader transformation fixtures, artifact cleanup, and additional product checks remain. |
 | 10. Portfolio release | Planned | Public release remains gated on the earlier security and evaluation work. |
 
 ## Phase 6 — isolated validation worker
 
 ### Goal
 
-After generation, build the target project and check its main route in a short-lived isolated worker. Return the complete project even when a check fails, and include the actual result in `MIGRATION-REPORT.md`.
+After generation, build the target project and check its expected static routes in a short-lived isolated worker. A failed build gets one bounded repair/rebuild attempt. Failed builds or required route checks block delivery; unavailable validation can return a ZIP only with an explicit unverified result in the UI and `MIGRATION-REPORT.md`.
 
 ### Recommended design
 
@@ -31,20 +31,20 @@ After generation, build the target project and check its main route in a short-l
 4. Apply one CPU, 1.5 GiB memory with no swap, 64 processes, bounded writable tmpfs, a three-minute timeout, and cleanup after completion or timeout.
 5. Drop Linux capabilities, enable `no-new-privileges`, use a read-only container root, and disable outbound networking during build and preview.
 6. Build the controlled scaffold with dependencies baked into the worker image. Do not install job-supplied packages or run job-supplied lifecycle scripts.
-7. After a successful build, start preview in the same sandbox and check `/` over loopback. Add Playwright browser checks in a follow-up.
+7. After a successful build, start preview in the same sandbox and check each expected static route over loopback. Add Playwright browser checks in a follow-up.
 8. Return bounded, sanitized diagnostics and individual build/route statuses; never translate a build pass into a claim of feature parity.
 
 ### Exit checks
 
 - A known-good generated fixture builds and returns HTTP 200 for `/` (requires Docker to be installed and started).
-- A deliberately invalid fixture reports a build failure and still returns its downloadable source and report (requires Docker).
+- A deliberately invalid fixture reports a build failure; the user-facing generation flow blocks ZIP delivery when the build remains failed (requires Docker for end-to-end confirmation).
 - A timeout, missing Docker worker, and container startup failure produce clear `not run` or `failed` results without crashing the web app.
 - The worker cannot read a host secret or reach arbitrary network destinations.
 - Temporary job files and containers are removed after success, failure, and cancellation.
 
 ### Local prerequisite
 
-The worker implementation, fixture projects, runner, and setup command are in place. Install and start Docker Desktop (or configure a separate remote worker) to build the image and exercise `npm run validate:fixtures`. The current host has no Docker or Podman command available, so those container scenarios remain unverified here.
+The worker implementation, fixture projects, evaluation harness, and setup command are in place. Install and start Docker Desktop (or configure a separate remote worker) to build the image and run `npm run evaluate:migrations`. The harness can still run deterministic source/target checks without Docker and will mark worker validation `not-run`; do not treat that as a pass.
 
 ## Phase 7 — safeguards before a public demo
 
@@ -58,7 +58,7 @@ The worker implementation, fixture projects, runner, and setup command are in pl
 
 ## Phase 8 — migration quality evaluation
 
-Create a migration quality fixture set owned by the project author: one static landing page, one React/Vite portfolio, and one multi-route React/Vite site. (The existing valid/invalid fixtures exercise worker correctness only.) For each migration fixture record the expected pages/content and important interactions. Run the same fixtures after prompt, model, scaffold, or worker changes.
+The first deterministic migration evaluation set now covers a static landing page, a React/Vite multi-route site, and an unsupported backend. Expand it with a React/Vite portfolio and explicit interaction expectations; run the same fixtures after prompt, model, scaffold, or worker changes. The harness does not invoke the paid model API; approved live runs must be recorded separately.
 
 Track build success, route coverage, interaction checks, visible-content preservation, manual gaps, retries, elapsed time, and model cost where available. Keep failures as results; do not tune the report to hide them.
 

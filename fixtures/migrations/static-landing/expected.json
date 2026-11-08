@@ -1,0 +1,14 @@
+{
+  "name": "static-landing",
+  "sourceType": "static",
+  "framework": "Static HTML/CSS/JavaScript",
+  "repository": "fixture/static-landing",
+  "goal": "Migrate this landing page and preserve its headline and supporting message.",
+  "keyFiles": ["index.html", "styles.css"],
+  "routeCandidates": ["index.html"],
+  "expectedRoutes": ["/"],
+  "targetAssertions": [
+    { "file": "app/page.tsx", "includes": "Northstar Studio" },
+    { "file": "app/page.tsx", "includes": "Design for thoughtful teams." }
+  ]
+}
