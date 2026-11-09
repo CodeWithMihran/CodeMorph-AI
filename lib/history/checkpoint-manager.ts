@@ -8,6 +8,7 @@ export type CheckpointTrigger =
   | "scaffold"
   | "test_scaffold"
   | "procedural_rules"
+  | "doctor_autofix"
   | "rollback";
 
 export interface CheckpointMeta {

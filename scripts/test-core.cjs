@@ -3420,3 +3420,153 @@ test("Migration Git Patch & Pull Request Export Integrator generates unified pat
   assert.ok(summary.prMarkdown.includes("Next.js App Router / React 19 Alignment"));
   assert.ok(summary.prMarkdown.includes("npm run dev"));
 });
+
+test("Migration Health Doctor evaluates directive scope, routing parity, a11y, hygiene, and executes 1-click deterministic autofixes", () => {
+  const {
+    runMigrationDoctor,
+    applyDoctorAutofix,
+  } = require("../lib/doctor/health-doctor.ts");
+  const { formatPrettyDoctor } = require("../lib/cli/cli-engine.ts");
+
+  // 1. Pristine project evaluation
+  const pristineEntries = [
+    {
+      path: "package.json",
+      content: JSON.stringify({ name: "pristine-app", dependencies: { next: "15.0.0", react: "19.0.0" } }),
+    },
+    {
+      path: "app/layout.tsx",
+      content: `export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return <html><body>{children}</body></html>;
+}`,
+    },
+    {
+      path: "app/page.tsx",
+      content: `"use client";
+import React, { useState } from "react";
+import Link from "next/link";
+
+export default function HomePage() {
+  const [count, setCount] = useState(0);
+  return (
+    <div>
+      <h1>Home ({count})</h1>
+      <button onClick={() => setCount(c => c + 1)}>Increment</button>
+      <Link href="/about">About Us</Link>
+      <img src="/logo.png" alt="Company Logo" />
+    </div>
+  );
+}`,
+    },
+  ];
+
+  const pristineReport = runMigrationDoctor(pristineEntries, "Next.js App Router");
+  assert.ok(pristineReport.overallScore >= 95, `Expected >= 95, got ${pristineReport.overallScore}`);
+  assert.equal(pristineReport.grade, "A+");
+  assert.equal(pristineReport.criticalCount, 0);
+  assert.equal(pristineReport.issues.length, 0);
+  assert.equal(pristineReport.totalFixable, 0);
+
+  // Verify CLI formatting
+  const cliText = formatPrettyDoctor(pristineReport);
+  assert.ok(cliText.includes("Overall Health Score:   100/100  (Grade A+)"));
+  assert.ok(cliText.includes("All architectural health check suites passed"));
+
+  // 2. Project with defects across multiple categories
+  const flawedEntries = [
+    {
+      path: "package.json",
+      content: JSON.stringify({
+        name: "flawed-app",
+        dependencies: {
+          next: "15.0.0",
+          react: "19.0.0",
+          "react-router-dom": "^6.20.0", // Deprecated package in Next.js
+        },
+      }),
+    },
+    {
+      path: "app/layout.tsx",
+      content: `export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return <html><body>{children}</body></html>;
+}`,
+    },
+    {
+      path: "app/page.tsx",
+      content: `import React, { useState } from "react";
+
+// Missing "use client" directive while using useState and onClick!
+export default function FlawedPage() {
+  const [state, setState] = useState(false);
+  debugger; // Leftover debugger statement
+
+  return (
+    <div>
+      <button onClick={() => setState(!state)}>Toggle</button>
+      <a href="/catalog">View Catalog</a>
+      <img src="/banner.jpg" />
+    </div>
+  );
+}`,
+    },
+  ];
+
+  const flawedReport = runMigrationDoctor(flawedEntries, "Next.js App Router");
+  assert.ok(flawedReport.overallScore < 75, `Expected score < 75, got ${flawedReport.overallScore}`);
+  assert.ok(flawedReport.issues.length >= 4);
+  assert.ok(flawedReport.totalFixable >= 3);
+
+  // Check specific issues detected
+  const missingDirective = flawedReport.issues.find((i) => i.id.startsWith("directive-missing"));
+  assert.ok(missingDirective);
+  assert.equal(missingDirective.category, "directives");
+  assert.equal(missingDirective.severity, "critical");
+  assert.equal(missingDirective.canAutofix, true);
+
+  const unmigratedAnchor = flawedReport.issues.find((i) => i.id.startsWith("a11y-unmigrated-anchor"));
+  assert.ok(unmigratedAnchor);
+  assert.equal(unmigratedAnchor.category, "accessibility");
+  assert.equal(unmigratedAnchor.canAutofix, true);
+
+  const missingAlt = flawedReport.issues.find((i) => i.id.startsWith("a11y-img-missing-alt"));
+  assert.ok(missingAlt);
+  assert.equal(missingAlt.category, "accessibility");
+  assert.equal(missingAlt.canAutofix, true);
+
+  const debuggerIssue = flawedReport.issues.find((i) => i.id.startsWith("hygiene-debugger"));
+  assert.ok(debuggerIssue);
+  assert.equal(debuggerIssue.category, "hygiene");
+  assert.equal(debuggerIssue.canAutofix, true);
+
+  const deprecatedPkg = flawedReport.issues.find((i) => i.id === "import-deprecated-react-router");
+  assert.ok(deprecatedPkg);
+  assert.equal(deprecatedPkg.category, "imports");
+  assert.equal(deprecatedPkg.severity, "warning");
+
+  // 3. Execute Deterministic 1-Click Autofix
+  const autofixResult = applyDoctorAutofix(flawedEntries);
+  assert.ok(autofixResult.appliedFixesCount >= 4);
+
+  const repairedPage = autofixResult.updatedEntries.find((e) => e.path === "app/page.tsx");
+  assert.ok(repairedPage);
+
+  // Injected directive
+  assert.ok(repairedPage.content.startsWith('"use client";'));
+
+  // Injected Link import and converted <a> to <Link>
+  assert.ok(repairedPage.content.includes('import Link from "next/link";'));
+  assert.ok(repairedPage.content.includes('<Link href="/catalog">View Catalog</Link>'));
+  assert.ok(!repairedPage.content.includes('<a href="/catalog">'));
+
+  // Injected accessible alt="Image"
+  assert.ok(repairedPage.content.includes('<img src="/banner.jpg" alt="Image" />') || repairedPage.content.includes('alt="Image"'));
+
+  // Removed debugger statement
+  assert.ok(!repairedPage.content.includes("debugger;"));
+
+  // Re-run doctor on repaired project: score must increase dramatically!
+  const healedReport = runMigrationDoctor(autofixResult.updatedEntries, "Next.js App Router");
+  assert.ok(healedReport.overallScore > flawedReport.overallScore);
+  assert.equal(healedReport.criticalCount, 0);
+  assert.equal(healedReport.totalFixable, 0);
+});

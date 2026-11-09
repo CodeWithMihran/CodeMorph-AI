@@ -16,6 +16,7 @@ import { unpackStoredZip } from "@/lib/migration/zip";
 import { scaffold, type ScaffoldConfig } from "@/lib/migration/scaffold";
 import type { MigrationTarget } from "@/lib/migration/plan";
 import { detectApplicableCodemods } from "@/lib/codemods/engine";
+import { runMigrationDoctor, type DoctorReport } from "@/lib/doctor/health-doctor";
 
 export interface LoadedSource {
   targetPath: string;
@@ -528,6 +529,45 @@ export function formatPrettyCodemod(result: CodemodCliResult): string {
     lines.push("");
   } else {
     lines.push("  ✔ No pending AST transformations needed across scanned source files.\n");
+  }
+
+  return lines.join("\n");
+}
+
+export function runDoctorOnSource(
+  source: LoadedSource,
+  targetFramework: string = "Next.js App Router"
+): DoctorReport {
+  return runMigrationDoctor(source.files, targetFramework);
+}
+
+export function formatPrettyDoctor(report: DoctorReport): string {
+  const lines: string[] = [];
+  lines.push("\n  🩺 CodeMorph AI Migration Health Doctor Report");
+  lines.push("  " + "━".repeat(50));
+  lines.push(`  Overall Health Score:   ${report.overallScore}/100  (Grade ${report.grade})`);
+  lines.push(`  Total Issues Detected:  ${report.issues.length} (${report.criticalCount} critical, ${report.warningCount} warnings)`);
+  lines.push(`  Automated 1-Click Fixes: ${report.totalFixable} available`);
+  lines.push("");
+
+  lines.push("  Category Breakdown:");
+  for (const cat of report.categories) {
+    const status = cat.totalIssues === 0 ? "✔ Pristine" : `⚠ ${cat.totalIssues} issue(s)`;
+    lines.push(`    • ${cat.title.padEnd(28)}: ${cat.score}%  (${status})`);
+  }
+  lines.push("");
+
+  if (report.issues.length > 0) {
+    lines.push("  Detected Issues & Diagnostics:");
+    for (const iss of report.issues) {
+      const fixTag = iss.canAutofix ? " [⚡ Autofixable]" : "";
+      lines.push(`    • [${iss.severity.toUpperCase()}] ${iss.title}${fixTag}`);
+      lines.push(`      File: ${iss.filePath}${iss.line ? `:${iss.line}` : ""}`);
+      lines.push(`      ↳ ${iss.description}`);
+    }
+    lines.push("");
+  } else {
+    lines.push("  ✔ All architectural health check suites passed with 100% compliance.\n");
   }
 
   return lines.join("\n");

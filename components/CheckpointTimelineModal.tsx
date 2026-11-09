@@ -31,6 +31,8 @@ function getTriggerBadge(trigger: CheckpointTrigger): { label: string; icon: str
       return { label: "Test Suite", icon: "🧪", className: "badge-test" };
     case "procedural_rules":
       return { label: "Procedural Rules", icon: "⚡", className: "badge-codemod" };
+    case "doctor_autofix":
+      return { label: "Doctor Autofix", icon: "🩺", className: "badge-codemod" };
     case "rollback":
       return { label: "Revert / Rollback", icon: "⏪", className: "badge-rollback" };
     default:

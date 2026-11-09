@@ -20,6 +20,8 @@ import { DeploymentLaunchModal } from "./DeploymentLaunchModal";
 import { ProceduralRulesEnforcementModal } from "./ProceduralRulesEnforcementModal";
 import { CodeSearchDrawer } from "./CodeSearchDrawer";
 import { GitExportModal } from "./GitExportModal";
+import { MigrationDoctorModal } from "./MigrationDoctorModal";
+import { runMigrationDoctor } from "@/lib/doctor/health-doctor";
 
 interface SourceManifest {
   framework: string;
@@ -96,6 +98,7 @@ export function CodeInspectorView({
   const [rulesModalOpen, setRulesModalOpen] = useState(false);
   const [searchDrawerOpen, setSearchDrawerOpen] = useState(false);
   const [gitModalOpen, setGitModalOpen] = useState(false);
+  const [doctorModalOpen, setDoctorModalOpen] = useState(false);
 
   // Checkpoint History Time-Machine state
   const [checkpointHistory, setCheckpointHistory] = useState<CheckpointHistory>(() =>
@@ -248,6 +251,28 @@ export function CodeInspectorView({
     setDraftContents({});
     setCheckpointHistory((prev) =>
       createCheckpoint(prev, summaryLabel, "manual_edit", updatedEntries)
+    );
+    if (onUpdateEntries) {
+      onUpdateEntries(updatedEntries);
+    }
+    setSaveToast(true);
+    setTimeout(() => setSaveToast(false), 2500);
+  };
+
+  const doctorReport = useMemo(() => {
+    return runMigrationDoctor(projectEntries, targetName);
+  }, [projectEntries, targetName]);
+
+  const handleApplyDoctorAutofix = (updatedEntries: ZipEntry[], fixCount: number) => {
+    setProjectEntries(updatedEntries);
+    setDraftContents({});
+    setCheckpointHistory((prev) =>
+      createCheckpoint(
+        prev,
+        `Doctor Autofix (${fixCount} issue${fixCount > 1 ? "s" : ""} healed)`,
+        "doctor_autofix",
+        updatedEntries
+      )
     );
     if (onUpdateEntries) {
       onUpdateEntries(updatedEntries);
@@ -582,6 +607,15 @@ export function CodeInspectorView({
             title="Run In-Browser Automated Test Suite & Route Assertion Engine"
           >
             🧪 Run Tests
+          </button>
+
+          <button
+            type="button"
+            className={`action-btn secondary doctor-btn ${doctorReport.overallScore < 90 ? "doctor-alert" : ""}`}
+            onClick={() => setDoctorModalOpen(true)}
+            title="Open Migration Health Doctor & Diagnostic Autofix"
+          >
+            🩺 Doctor ({doctorReport.grade} • {doctorReport.overallScore}%)
           </button>
 
           <button
@@ -1194,6 +1228,16 @@ export function CodeInspectorView({
         targetName={targetName}
         sourceFiles={sourceManifest ? sourceManifest.files : []}
         targetEntries={projectEntries}
+      />
+
+      {/* Migration Health Doctor & Diagnostic Autofix Modal */}
+      <MigrationDoctorModal
+        isOpen={doctorModalOpen}
+        onClose={() => setDoctorModalOpen(false)}
+        entries={projectEntries}
+        targetName={targetName}
+        onApplyAutofix={handleApplyDoctorAutofix}
+        onSelectFile={(filePath) => setSelectedPath(filePath)}
       />
     </div>
   );
