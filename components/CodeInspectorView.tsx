@@ -19,6 +19,7 @@ import { ArchitectureGraphModal } from "./ArchitectureGraphModal";
 import { DeploymentLaunchModal } from "./DeploymentLaunchModal";
 import { ProceduralRulesEnforcementModal } from "./ProceduralRulesEnforcementModal";
 import { CodeSearchDrawer } from "./CodeSearchDrawer";
+import { GitExportModal } from "./GitExportModal";
 
 interface SourceManifest {
   framework: string;
@@ -94,6 +95,7 @@ export function CodeInspectorView({
   const [deployModalOpen, setDeployModalOpen] = useState(false);
   const [rulesModalOpen, setRulesModalOpen] = useState(false);
   const [searchDrawerOpen, setSearchDrawerOpen] = useState(false);
+  const [gitModalOpen, setGitModalOpen] = useState(false);
 
   // Checkpoint History Time-Machine state
   const [checkpointHistory, setCheckpointHistory] = useState<CheckpointHistory>(() =>
@@ -580,6 +582,15 @@ export function CodeInspectorView({
             title="Run In-Browser Automated Test Suite & Route Assertion Engine"
           >
             🧪 Run Tests
+          </button>
+
+          <button
+            type="button"
+            className="action-btn secondary git-export-btn"
+            onClick={() => setGitModalOpen(true)}
+            title="Generate Git Patch, PR Branch Commands & Description"
+          >
+            📦 Git / PR
           </button>
 
           <button
@@ -1174,6 +1185,15 @@ export function CodeInspectorView({
         entries={projectEntries}
         onSelectMatch={handleSelectSearchMatch}
         onApplyReplace={handleApplyGlobalReplace}
+      />
+
+      {/* Migration Git Patch & Pull Request Export Integrator Modal */}
+      <GitExportModal
+        isOpen={gitModalOpen}
+        onClose={() => setGitModalOpen(false)}
+        targetName={targetName}
+        sourceFiles={sourceManifest ? sourceManifest.files : []}
+        targetEntries={projectEntries}
       />
     </div>
   );

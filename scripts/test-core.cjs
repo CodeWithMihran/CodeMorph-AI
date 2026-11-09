@@ -3326,3 +3326,97 @@ export function UserCard({ name, role }: UserCardProps) {
   const missingDef = findSymbolDefinition(sampleEntries, "NonExistentHelper");
   assert.equal(missingDef, null);
 });
+
+test("Migration Git Patch & Pull Request Export Integrator generates unified patches, branch CLI commands, and PR markdown", () => {
+  const {
+    buildUnifiedHunks,
+    generateGitPatch,
+  } = require("../lib/git/patch-generator.ts");
+
+  // 1. Unified Hunk Generator
+  const hunksNoChange = buildUnifiedHunks("hello world\n", "hello world\n");
+  assert.equal(hunksNoChange.length, 0);
+
+  const hunksChanged = buildUnifiedHunks(
+    "const a = 1;\nconst b = 2;\n",
+    "const a = 1;\nconst b = 3;\nconst c = 4;\n"
+  );
+  assert.equal(hunksChanged.length, 1);
+  assert.ok(hunksChanged[0].lines.some((l) => l.startsWith("-const b = 2;")));
+  assert.ok(hunksChanged[0].lines.some((l) => l.startsWith("+const b = 3;")));
+  assert.ok(hunksChanged[0].lines.some((l) => l.startsWith("+const c = 4;")));
+
+  // 2. Full Git Patch Generation with Source vs Target Comparison
+  const sourceFiles = [
+    {
+      path: "src/App.jsx",
+      content: "import React from 'react';\nexport function App() { return <div>Vite App</div>; }",
+    },
+    {
+      path: "src/legacy-helper.js",
+      content: "export function oldHelper() { return 'deprecated'; }",
+    },
+  ];
+
+  const targetEntries = [
+    {
+      path: "app/page.tsx",
+      content: `"use client";\nimport React from "react";\nexport default function HomePage() { return <div>Modern Next.js App</div>; }`,
+    },
+    {
+      path: "src/App.jsx",
+      content: "import React from 'react';\nexport function App() { return <div>Modernized Vite App</div>; }",
+    },
+    {
+      path: "app/about/page.tsx",
+      content: `export default function AboutPage() { return <div>About</div>; }`,
+    },
+  ];
+
+  const summary = generateGitPatch(sourceFiles, targetEntries, {
+    branchName: "codemorph/nextjs-modernization",
+    commitMessage: "chore: migrate from react-vite to Next.js App Router",
+    targetFramework: "Next.js App Router (TypeScript)",
+    testPassRate: 100,
+  });
+
+  // Check file classifications
+  assert.ok(summary.addedFiles.includes("app/page.tsx"));
+  assert.ok(summary.addedFiles.includes("app/about/page.tsx"));
+  assert.ok(summary.modifiedFiles.includes("src/App.jsx"));
+  assert.ok(summary.deletedFiles.includes("src/legacy-helper.js"));
+
+  // Check additions and deletions counts
+  assert.ok(summary.totalAdditions > 0);
+  assert.ok(summary.totalDeletions > 0);
+
+  // Check unified patch syntax
+  assert.ok(summary.patchText.includes("diff --git a/app/page.tsx b/app/page.tsx"));
+  assert.ok(summary.patchText.includes("new file mode 100644"));
+  assert.ok(summary.patchText.includes("--- /dev/null"));
+  assert.ok(summary.patchText.includes("+++ b/app/page.tsx"));
+
+  assert.ok(summary.patchText.includes("diff --git a/src/App.jsx b/src/App.jsx"));
+  assert.ok(summary.patchText.includes("--- a/src/App.jsx"));
+  assert.ok(summary.patchText.includes("+++ b/src/App.jsx"));
+
+  assert.ok(summary.patchText.includes("diff --git a/src/legacy-helper.js b/src/legacy-helper.js"));
+  assert.ok(summary.patchText.includes("deleted file mode 100644"));
+  assert.ok(summary.patchText.includes("--- a/src/legacy-helper.js"));
+  assert.ok(summary.patchText.includes("+++ /dev/null"));
+
+  // Check CLI script commands
+  assert.ok(summary.cliScript.includes("git checkout -b codemorph/nextjs-modernization"));
+  assert.ok(summary.cliScript.includes("git apply codemorph-migration.patch"));
+  assert.ok(summary.cliScript.includes("git add -A"));
+  assert.ok(summary.cliScript.includes("git commit -m \"chore: migrate from react-vite to Next.js App Router\""));
+  assert.ok(summary.cliScript.includes("git push -u origin codemorph/nextjs-modernization"));
+
+  // Check PR Markdown description
+  assert.ok(summary.prMarkdown.includes("## 🚀 Code Modernization: Automated Migration to Next.js App Router (TypeScript)"));
+  assert.ok(summary.prMarkdown.includes("100% verified"));
+  assert.ok(summary.prMarkdown.includes("| `/` | `app/page.tsx` | ✅ Modernized |"));
+  assert.ok(summary.prMarkdown.includes("| `/about` | `app/about/page.tsx` | ✅ Modernized |"));
+  assert.ok(summary.prMarkdown.includes("Next.js App Router / React 19 Alignment"));
+  assert.ok(summary.prMarkdown.includes("npm run dev"));
+});
