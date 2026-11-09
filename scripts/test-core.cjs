@@ -193,7 +193,13 @@ test("generated output validation checks dynamic imports and blocks Node built-i
 
 test("migration acceptance fixtures verify source types, mapped routes, content, and immutability", () => {
   const fixturesRoot = path.join(root, "fixtures", "migrations");
-  for (const name of ["static-landing", "react-vite-multi-route", "enterprise-hybrid-dashboard", "unsupported-backend"]) {
+  for (const name of [
+    "static-landing",
+    "react-vite-multi-route",
+    "enterprise-hybrid-dashboard",
+    "ecommerce-storefront-platform",
+    "unsupported-backend",
+  ]) {
     const fixtureRoot = path.join(fixturesRoot, name);
     const expected = JSON.parse(fs.readFileSync(path.join(fixtureRoot, "expected.json"), "utf8"));
     const sourceBefore = readTree(path.join(fixtureRoot, "source"));
@@ -237,11 +243,24 @@ test("migration acceptance fixtures verify source types, mapped routes, content,
 });
 
 test("migration evaluation harness reports deterministic fixture contracts and honest scope", () => {
-  const results = ["static-landing", "react-vite-multi-route", "enterprise-hybrid-dashboard", "unsupported-backend"].map(evaluateStaticFixture);
-  assert.deepEqual(results.map((result) => result.status), ["passed", "passed", "passed", "passed"]);
+  const results = [
+    "static-landing",
+    "react-vite-multi-route",
+    "enterprise-hybrid-dashboard",
+    "ecommerce-storefront-platform",
+    "unsupported-backend",
+  ].map(evaluateStaticFixture);
+  assert.deepEqual(results.map((result) => result.status), [
+    "passed",
+    "passed",
+    "passed",
+    "passed",
+    "passed",
+  ]);
   assert.ok(results[1].checks.some((check) => check.label === "expected route coverage" && check.status === "passed"));
   assert.ok(results[2].checks.some((check) => check.label === "expected route coverage" && check.status === "passed"));
-  assert.ok(results[3].checks.some((check) => check.label === "unsupported source is gated" && check.status === "passed"));
+  assert.ok(results[3].checks.some((check) => check.label === "expected route coverage" && check.status === "passed"));
+  assert.ok(results[4].checks.some((check) => check.label === "unsupported source is gated" && check.status === "passed"));
   const markdown = markdownReport({ generatedAt: "2026-01-01T00:00:00.000Z", mode: "static-contracts-only", status: "unverified", migrationFixtures: results, workerFixtures: [] });
   assert.match(markdown, /Live OpenAI generation: \*\*not run\*\*/);
   assert.match(markdown, /Worker checks were not requested/);

@@ -1,0 +1,29 @@
+{
+  "name": "ecommerce-storefront-platform",
+  "sourceType": "react-vite",
+  "framework": "React + Vite",
+  "repository": "fixture/ecommerce-storefront-platform",
+  "goal": "Migrate full-scale e-commerce storefront with product catalog, cart state, and checkout order processing.",
+  "keyFiles": [
+    "package.json",
+    "src/main.tsx",
+    "src/App.tsx",
+    "src/pages/Home.tsx",
+    "src/pages/Catalog.tsx",
+    "src/pages/Cart.tsx",
+    "src/pages/Checkout.tsx"
+  ],
+  "routeCandidates": [
+    "src/pages/Home.tsx",
+    "src/pages/Catalog.tsx",
+    "src/pages/Cart.tsx",
+    "src/pages/Checkout.tsx"
+  ],
+  "expectedRoutes": ["/", "/cart", "/catalog", "/checkout"],
+  "targetAssertions": [
+    { "file": "app/page.tsx", "includes": "Modern E-Commerce Storefront" },
+    { "file": "app/catalog/page.tsx", "includes": "Product Catalog Grid" },
+    { "file": "app/cart/page.tsx", "includes": "Shopping Cart Summary" },
+    { "file": "app/checkout/page.tsx", "includes": "Secure Order Checkout" }
+  ]
+}
