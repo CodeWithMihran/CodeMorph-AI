@@ -16,6 +16,7 @@ import { SimulatedDevicePreview } from "./SimulatedDevicePreview";
 import { CheckpointTimelineModal } from "./CheckpointTimelineModal";
 import { SimulatedDevTerminal } from "./SimulatedDevTerminal";
 import { ArchitectureGraphModal } from "./ArchitectureGraphModal";
+import { DeploymentLaunchModal } from "./DeploymentLaunchModal";
 
 interface SourceManifest {
   framework: string;
@@ -87,6 +88,7 @@ export function CodeInspectorView({
   const [historyModalOpen, setHistoryModalOpen] = useState(false);
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [architectureModalOpen, setArchitectureModalOpen] = useState(false);
+  const [deployModalOpen, setDeployModalOpen] = useState(false);
 
   // Checkpoint History Time-Machine state
   const [checkpointHistory, setCheckpointHistory] = useState<CheckpointHistory>(() =>
@@ -403,6 +405,25 @@ export function CodeInspectorView({
     }
   };
 
+  // Inject cloud deployment configuration file into project
+  const handleInjectDeploymentFile = (filename: string, content: string) => {
+    const exists = projectEntries.some((e) => e.path === filename);
+    const updated = exists
+      ? projectEntries.map((e) => (e.path === filename ? { ...e, content } : e))
+      : [...projectEntries, { path: filename, content }];
+
+    setProjectEntries(updated);
+    setSelectedPath(filename);
+    setCheckpointHistory((prev) =>
+      createCheckpoint(prev, `Injected Cloud Config: ${filename}`, "scaffold", updated)
+    );
+    setSaveToast(true);
+    setTimeout(() => setSaveToast(false), 2000);
+    if (onUpdateEntries) {
+      onUpdateEntries(updated);
+    }
+  };
+
   // Hot-Patch & Download ZIP (packages in-memory entries with all drafts)
   const handleDownloadHotPatchedZip = () => {
     if (modifiedFiles.size === 0 && onDownloadZip) {
@@ -484,6 +505,15 @@ export function CodeInspectorView({
         </div>
 
         <div className="inspector-header-actions">
+          <button
+            type="button"
+            className="action-btn secondary deploy-modal-btn"
+            onClick={() => setDeployModalOpen(true)}
+            title="Open Cloud Deployment & Launch Integrator"
+          >
+            🚀 Deploy
+          </button>
+
           <button
             type="button"
             className="action-btn secondary architecture-btn"
@@ -1038,6 +1068,16 @@ export function CodeInspectorView({
         onClose={() => setArchitectureModalOpen(false)}
         entries={projectEntries}
         title={`Architecture & Dependency Graph (${targetName})`}
+      />
+
+      {/* Cloud Deployment & Launch Integrator Modal */}
+      <DeploymentLaunchModal
+        isOpen={deployModalOpen}
+        onClose={() => setDeployModalOpen(false)}
+        targetName={targetName}
+        projectName={targetName.toLowerCase().includes("expo") ? "codemorph-expo-app" : "codemorph-nextjs-app"}
+        entries={projectEntries}
+        onInjectFile={handleInjectDeploymentFile}
       />
     </div>
   );

@@ -2715,3 +2715,79 @@ test("Architecture graph engine builds topological node-link networks, identifie
   assert.ok(graph.metrics.componentsCount >= 1);
   assert.equal(graph.metrics.circularCycleCount, 0); // Clean project has 0 cycles
 });
+
+test("Deployment template engine synthesizes target-aware Vercel, Netlify, EAS, and container configurations with environment variable manifests", () => {
+  const {
+    extractEnvVariables,
+    generateVercelConfig,
+    generateNetlifyConfig,
+    generateExpoEasConfig,
+    generateProductionDockerConfig,
+    generateEnvExamplePreset,
+    getDeploymentPresets,
+  } = require("../lib/deployment/launch-templates.ts");
+
+  // 1. Environment variable extraction
+  const sampleEntries = [
+    {
+      path: "app/page.tsx",
+      content: `const apiUrl = process.env.NEXT_PUBLIC_API_URL;\nconst secret = process.env.DATABASE_URL;\nconst env = process.env.NODE_ENV;`,
+    },
+    {
+      path: "app/index.tsx",
+      content: `const mobileEndpoint = process.env.EXPO_PUBLIC_ENDPOINT;`,
+    },
+  ];
+
+  const envs = extractEnvVariables(sampleEntries);
+  assert.ok(envs.includes("NEXT_PUBLIC_API_URL"));
+  assert.ok(envs.includes("EXPO_PUBLIC_ENDPOINT"));
+  assert.ok(envs.includes("DATABASE_URL"));
+  assert.equal(envs.includes("NODE_ENV"), false); // Filtered out standard NODE_ENV
+
+  // 2. Vercel Preset
+  const vercel = generateVercelConfig("my-app");
+  assert.equal(vercel.filename, "vercel.json");
+  assert.equal(vercel.recommendedFor, "nextjs");
+  assert.match(vercel.content, /"framework":\s*"nextjs"/);
+  assert.match(vercel.content, /"cleanUrls":\s*true/);
+  assert.ok(vercel.deployUrl.includes("vercel.com/new/clone"));
+
+  // 3. Netlify Preset
+  const netlify = generateNetlifyConfig();
+  assert.equal(netlify.filename, "netlify.toml");
+  assert.match(netlify.content, /@netlify\/plugin-nextjs/);
+  assert.match(netlify.content, /command = "npm run build"/);
+
+  // 4. Expo EAS Preset
+  const eas = generateExpoEasConfig("my-mobile-app");
+  assert.equal(eas.filename, "eas.json");
+  assert.equal(eas.recommendedFor, "expo");
+  assert.match(eas.content, /"app-bundle"/);
+  assert.match(eas.content, /"developmentClient":\s*true/);
+
+  // 5. Production Dockerfile
+  const docker = generateProductionDockerConfig();
+  assert.equal(docker.filename, "Dockerfile");
+  assert.match(docker.content, /FROM node:20-alpine AS base/);
+  assert.match(docker.content, /USER nextjs/);
+  assert.match(docker.content, /CMD \["node", "server\.js"\]/);
+
+  // 6. Environment Example Preset
+  const envPreset = generateEnvExamplePreset(envs);
+  assert.equal(envPreset.filename, ".env.example");
+  assert.match(envPreset.content, /NEXT_PUBLIC_API_URL=/);
+  assert.match(envPreset.content, /EXPO_PUBLIC_ENDPOINT=/);
+
+  // 7. Target-aware Preset grouping
+  const nextGroup = getDeploymentPresets("Next.js App Router", "my-next-app", sampleEntries);
+  assert.ok(nextGroup.presets.some((p) => p.id === "vercel"));
+  assert.ok(nextGroup.presets.some((p) => p.id === "netlify"));
+  assert.ok(nextGroup.presets.some((p) => p.id === "docker"));
+  assert.equal(nextGroup.presets.some((p) => p.id === "expo_eas"), false);
+
+  const expoGroup = getDeploymentPresets("Expo Router (React Native Mobile)", "my-expo-app", sampleEntries);
+  assert.ok(expoGroup.presets.some((p) => p.id === "expo_eas"));
+  assert.ok(expoGroup.presets.some((p) => p.id === "env_example"));
+  assert.equal(expoGroup.presets.some((p) => p.id === "vercel"), false);
+});
