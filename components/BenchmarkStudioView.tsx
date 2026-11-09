@@ -291,7 +291,7 @@ export function BenchmarkStudioView() {
           <div>
             <h2 className="section-title">1. Configure Benchmark Portfolio Candidates</h2>
             <p className="section-subtext">
-              Select 2 to 4 codebases to benchmark against Next.js 15 App Router or Expo Router targets.
+              Select 2 to 4 codebases to benchmark against Next.js App Router or Expo Router targets.
             </p>
           </div>
           <div className="upload-wrapper">
@@ -371,18 +371,18 @@ export function BenchmarkStudioView() {
             </div>
             <div className="total-stat-card">
               <span className="stat-label">MANUAL REFACTORING HOURS</span>
-              <span className="stat-value">~{benchmarkResult.portfolioTotals.totalManualHoursSaved} hrs</span>
+              <span className="stat-value">~{benchmarkResult.portfolioTotals.totalEstimatedManualHours} hrs</span>
               <span className="stat-desc">Estimated baseline manual engineering</span>
             </div>
             <div className="total-stat-card highlight">
-              <span className="stat-label">PROJECTED ROI / SAVINGS</span>
+              <span className="stat-label">ILLUSTRATIVE COST ESTIMATE</span>
               <span className="stat-value">${benchmarkResult.portfolioTotals.totalEstimatedSavingsDollars.toLocaleString()}</span>
-              <span className="stat-desc">Autonomous modernization cost efficiency</span>
+              <span className="stat-desc">Heuristic manual-effort estimate using a fixed hourly-rate assumption</span>
             </div>
             <div className="total-stat-card">
               <span className="stat-label">TOTAL SECURITY FINDINGS</span>
               <span className="stat-value">{benchmarkResult.portfolioTotals.totalSecurityFindings}</span>
-              <span className="stat-desc">Aggregated CVE &amp; syntax warnings</span>
+              <span className="stat-desc">Aggregated static audit and syntax findings; CVEs require dependency advisory checks</span>
             </div>
           </div>
 
@@ -457,7 +457,7 @@ export function BenchmarkStudioView() {
                     ))}
                   </tr>
                   <tr>
-                    <td className="row-label">Critical &amp; High Security CVEs</td>
+                    <td className="row-label">Critical &amp; High Static Findings</td>
                     {benchmarkResult.projects.map((p) => (
                       <td key={p.id}>
                         {p.findingsSummary.critical + p.findingsSummary.high > 0 ? (
@@ -465,7 +465,7 @@ export function BenchmarkStudioView() {
                             {p.findingsSummary.critical} critical, {p.findingsSummary.high} high
                           </span>
                         ) : (
-                          <span className="clean-text">✔ 0 CVEs</span>
+                          <span className="clean-text">✔ 0 static findings</span>
                         )}
                       </td>
                     ))}

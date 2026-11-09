@@ -53,7 +53,7 @@ function printHelp() {
     audit [path]        Run deterministic AST security, syntax, and dependency CVE audit
     feasibility [path]  Evaluate codebase migration portability and health scorecard
     scaffold [path]     Synthesize target project scaffold, test suites, and CI workflows
-    codemod [path]      Run deterministic AST codemods (React Router -> Next.js, 'use client', <img>)
+    codemod [path]      Run deterministic text codemods (React Router -> Next.js, 'use client', <img>)
     version             Display CodeMorph AI CLI version
     help                Display this manual
 
@@ -62,7 +62,7 @@ function printHelp() {
     --format=<type>           Output formatting ("pretty" | "json" | "markdown", default: "pretty")
     --output=<file>, -o       Write report or output to a specified destination file
     --out=<directory>         Directory to write scaffolded files (for scaffold command)
-    --fix                     Write AST codemod transformations directly to disk
+    --fix                     Write codemod transformations directly to disk
     --type=<type>             Codemod type ("all" | "react-router" | "use-client" | "next-image" | "expo-primitives")
     --fail-under=<score>      Exit with code 1 if feasibility score is below threshold (e.g. --fail-under=80)
     --fail-on-critical        Exit with code 1 if audit finds high or critical vulnerabilities

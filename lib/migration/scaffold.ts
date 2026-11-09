@@ -55,23 +55,28 @@ export function scaffold(
         ...(resolvedConfig.includeTestSuite !== false ? { test: "jest" } : {}),
       },
       dependencies: {
-        expo: "~52.0.0",
-        "expo-constants": "~17.0.0",
-        "expo-linking": "~7.0.0",
-        "expo-router": "~4.0.0",
-        "expo-status-bar": "~2.0.0",
-        react: "18.3.1",
-        "react-native": "0.76.0",
-        "react-native-safe-area-context": "4.12.0",
-        "react-native-screens": "~4.4.0",
-        ...(isNativeWind ? { nativewind: "^4.0.1", "react-native-reanimated": "~3.16.1" } : {}),
+        expo: "~58.0.20",
+        "expo-constants": "~58.0.15",
+        "expo-linking": "~58.0.16",
+        "expo-router": "~58.0.30",
+        "expo-status-bar": "~58.0.4",
+        react: "19.3.0",
+        "react-native": "0.88.0",
+        "react-native-gesture-handler": "~3.3.0",
+        "react-native-safe-area-context": "~5.11.1",
+        "react-native-screens": "~4.30.1",
+        ...(isNativeWind ? {
+          nativewind: "^4.2.7",
+          "react-native-reanimated": "~4.7.1",
+          "react-native-worklets": "~0.13.0",
+        } : {}),
       },
       devDependencies: {
-        "@types/react": "~18.3.12",
+        "@types/react": "~19.3.0",
         typescript: "^5.3.3",
-        ...(isNativeWind ? { tailwindcss: "^3.4.0" } : {}),
+        ...(isNativeWind ? { "babel-preset-expo": "~58.0.20", tailwindcss: "^3.4.17" } : {}),
         ...(resolvedConfig.includeTestSuite !== false
-          ? { jest: "^29.7.0", "jest-expo": "~52.0.0" }
+          ? { jest: "^30.5.2", "@types/jest": "^30.0.0", "jest-expo": "~58.0.11" }
           : {}),
       },
     };
@@ -144,7 +149,7 @@ export function scaffold(
       `${runCmd} start`,
       "```",
       "",
-      "Scan the QR code with a matching Expo Go version on your device, or press `a` for Android Emulator, `i` for iOS Simulator, or `w` for Web. For production or custom native modules, run `npx expo prebuild` and `npx expo run:android` / `npx expo run:ios`.",
+      "Requires Node.js 22.13 or newer. Scan the QR code with a compatible Expo Go build, or press `a` for Android Emulator, `i` for iOS Simulator, or `w` for Web. For production or custom native modules, run `npx expo prebuild` and `npx expo run:android` / `npx expo run:ios`.",
       "",
       ...(resolvedConfig.includeTestSuite !== false
         ? [
@@ -186,6 +191,44 @@ export function scaffold(
         path: "global.css",
         content: "@tailwind base;\n@tailwind components;\n@tailwind utilities;\n",
       });
+      entries.push(
+        {
+          path: "babel.config.js",
+          content: [
+            "module.exports = function (api) {",
+            "  api.cache(true);",
+            "  return {",
+            '    presets: [["babel-preset-expo", { jsxImportSource: "nativewind" }], "nativewind/babel"],',
+            "  };",
+            "};",
+            "",
+          ].join("\n"),
+        },
+        {
+          path: "metro.config.js",
+          content: [
+            'const { getDefaultConfig } = require("expo/metro-config");',
+            'const { withNativeWind } = require("nativewind/metro");',
+            "const config = getDefaultConfig(__dirname);",
+            'module.exports = withNativeWind(config, { input: "./global.css" });',
+            "",
+          ].join("\n"),
+        },
+        {
+          path: "tailwind.config.js",
+          content: [
+            "/** @type {import('tailwindcss').Config} */",
+            "module.exports = {",
+            '  content: ["./app/**/*.{js,jsx,ts,tsx}", "./components/**/*.{js,jsx,ts,tsx}"],',
+            '  presets: [require("nativewind/preset")],',
+            "  theme: { extend: {} },",
+            "  plugins: [],",
+            "};",
+            "",
+          ].join("\n"),
+        },
+        { path: "nativewind-env.d.ts", content: '/// <reference types="nativewind/types" />\n' }
+      );
     }
 
     if (resolvedConfig.includeCiWorkflow) {
@@ -208,7 +251,7 @@ export function scaffold(
         "      - name: Setup Node.js",
         "        uses: actions/setup-node@v4",
         "        with:",
-        "          node-version: 20",
+        "          node-version: 22.13",
         `          cache: ${pm === "yarn" ? "yarn" : pm === "pnpm" ? "pnpm" : "npm"}`,
         "",
         `      - name: Install dependencies`,

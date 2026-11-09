@@ -39,6 +39,9 @@ const IGNORED_DIRS = new Set([
   "coverage",
   ".expo",
 ]);
+const MAX_LOCAL_FILES = 10_000;
+const MAX_LOCAL_TEXT_BYTES = 100 * 1024 * 1024;
+const MAX_LOCAL_DEPTH = 64;
 
 /**
  * Reads a local project directory or ZIP archive into an in-memory normalized source structure.
@@ -90,8 +93,12 @@ export function readLocalSource(targetPath: string): LoadedSource {
   const auditableFiles: Array<{ path: string; content: string }> = [];
   const metadataFiles: Array<{ path: string; content: string }> = [];
   let repositoryFileCount = 0;
+  let analyzedBytes = 0;
 
-  function walk(currentDir: string) {
+  function walk(currentDir: string, depth = 0) {
+    if (depth > MAX_LOCAL_DEPTH) {
+      throw new Error(`Project directory nesting exceeds the ${MAX_LOCAL_DEPTH}-level scan limit.`);
+    }
     const items = fs.readdirSync(currentDir, { withFileTypes: true });
     for (const item of items) {
       if (IGNORED_DIRS.has(item.name)) continue;
@@ -99,12 +106,20 @@ export function readLocalSource(targetPath: string): LoadedSource {
       if (item.isSymbolicLink()) continue;
 
       if (item.isDirectory()) {
-        walk(fullPath);
+        walk(fullPath, depth + 1);
       } else if (item.isFile()) {
         repositoryFileCount++;
+        if (repositoryFileCount > MAX_LOCAL_FILES) {
+          throw new Error(`Project contains more than ${MAX_LOCAL_FILES.toLocaleString()} files; reduce the input size and retry.`);
+        }
         const relPath = path.relative(resolved, fullPath).split(path.sep).join("/");
         try {
+          const fileBytes = fs.statSync(fullPath).size;
+          if (analyzedBytes + fileBytes > MAX_LOCAL_TEXT_BYTES) {
+            throw new Error(`Project text exceeds the ${Math.round(MAX_LOCAL_TEXT_BYTES / (1024 * 1024))} MiB scan limit.`);
+          }
           const content = fs.readFileSync(fullPath, "utf8");
+          analyzedBytes += fileBytes;
           const entry = { path: relPath, content };
           collectedFiles.push(entry);
 
@@ -113,7 +128,8 @@ export function readLocalSource(targetPath: string): LoadedSource {
           } else if (isAuditableSourcePath(relPath)) {
             auditableFiles.push(entry);
           }
-        } catch {
+        } catch (error) {
+          if (error instanceof Error && /scan limit/.test(error.message)) throw error;
           // Non-UTF8 binary files are skipped from text analysis
         }
       }
@@ -497,7 +513,7 @@ export function formatPrettyScaffold(result: ScaffoldCliResult): string {
   const lines: string[] = [];
   lines.push("\n  🚀 CodeMorph AI Autonomous Scaffold Generator");
   lines.push("  " + "━".repeat(50));
-  lines.push(`  Target Framework:   ${result.target === "expo" ? "Expo Router (React Native) + TypeScript" : "Next.js 15 App Router + TypeScript"}`);
+  lines.push(`  Target Framework:   ${result.target === "expo" ? "Expo Router (React Native) + TypeScript" : "Next.js App Router + TypeScript"}`);
   lines.push(`  Synthesized Files:  ${result.filesCount} entries`);
   if (result.writtenTo) {
     lines.push(`  Output Location:    ${result.writtenTo}`);
@@ -513,11 +529,11 @@ export function formatPrettyScaffold(result: ScaffoldCliResult): string {
 
 export function formatPrettyCodemod(result: CodemodCliResult): string {
   const lines: string[] = [];
-  lines.push("\n  ⚡ CodeMorph AI Deterministic AST Codemod Engine");
+  lines.push("\n  ⚡ CodeMorph AI Deterministic Text Codemod Engine");
   lines.push("  " + "━".repeat(50));
   lines.push(`  Scanned Source Files:   ${result.totalFiles}`);
   lines.push(`  Files with Transforms:  ${result.modifiedFilesCount}`);
-  lines.push(`  Total AST Transforms:   ${result.transforms.length}`);
+  lines.push(`  Total Text Transforms:  ${result.transforms.length}`);
   lines.push("");
 
   if (result.transforms.length > 0) {
@@ -528,7 +544,7 @@ export function formatPrettyCodemod(result: CodemodCliResult): string {
     }
     lines.push("");
   } else {
-    lines.push("  ✔ No pending AST transformations needed across scanned source files.\n");
+    lines.push("  ✔ No pending text transformations needed across scanned source files.\n");
   }
 
   return lines.join("\n");

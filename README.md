@@ -52,7 +52,7 @@ Install and start Docker Desktop with Linux containers enabled. Build the dedica
 docker build -f docker/validator/Dockerfile -t stackshift-validator:16.4.3-1 .
 ```
 
-The worker image pins its Node base image by digest and uses the project lockfile. Each validation container runs as a non-root user with no network, no mounted host files, a read-only root filesystem, 1.5 GiB memory, one CPU, 64 processes maximum, and a three-minute limit. It does not install packages from the generated project. If Docker or the image is unavailable, the generated ZIP is still returned and marked unverified in the app and report. Do not expose this prototype publicly; authentication and persistent abuse limits are still missing.
+The worker image pins its Node base image by digest and uses the project lockfile. Each validation container runs as a non-root user with no network, no mounted host files, a read-only root filesystem, 1.5 GiB memory, one CPU, 64 processes maximum, and a three-minute limit. It does not install packages from the generated project. If Docker or the image is unavailable, the generated ZIP is still returned and marked unverified in the app and report. Do not expose this prototype publicly: authentication is not implemented, and rate limits and concurrency controls are in-memory per process rather than shared or durable.
 
 Run the worker's local acceptance fixtures after the image is built:
 
@@ -79,7 +79,7 @@ OPENAI_API_KEY=your-api-key
 CODEMORPH_OPENAI_MODEL=gpt-5-mini
 ```
 
-The model setting is optional; the current default is `gpt-4o-mini`. Restart the dev server after setting the key. Generation sends the selected source snippets and your goal to OpenAI, and API usage may incur charges. Never commit `.env.local`. This prototype does not yet have user authentication or generation rate limits, so keep it local and do not deploy it publicly.
+The model setting is optional; the current default is `gpt-4o-mini`. Restart the dev server after setting the key. Generation sends the selected source snippets and your goal to OpenAI, and API usage may incur charges. Never commit `.env.local`. The application has per-process generation rate limits, but no user authentication or shared, durable quotas; keep it local until these controls are added.
 
 Successful compiler repairs can create a pending procedural-rule candidate in the git-ignored `.codemorph/procedural-rules.json` store only when the changed generated code demonstrates a supported transformation. The current curated rule fixture covers React Router `Link` imports and `to` props migrating to Next.js `Link` and `href`; replay checks its exact before/after output and negative scope cases before dashboard review. Only explicitly promoted, fixture-backed rules enter later model prompts. Model repair notes are not stored as rules, and unsupported transformations remain unlearned until an owned fixture is added. The store keeps bounded error signatures, source triggers, canonical fixture resolutions, and aggregate use outcomes; it does not save source files or raw compiler logs. For a persistent mounted location, set `CODEMORPH_RULES_PATH` to that file path before starting the app. This local JSON store is intended for a single deployment instance; a multi-instance service needs a shared durable store and operational access controls. Fixture replay proves the documented mapping and its scope boundaries, not full correctness for every project.
 

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdir, open, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, open, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { redactSecretText } from "@/lib/security/secrets";
 import type { GeneratedFile } from "@/lib/migration/model";
@@ -172,7 +172,18 @@ async function writeStore(filePath: string, store: RuleStoreFile) {
   const directory = path.dirname(filePath);
   await mkdir(directory, { recursive: true });
   const tempPath = `${filePath}.${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}.tmp`;
-  try { await writeFile(tempPath, `${JSON.stringify(store, null, 2)}\n`, { encoding: "utf8", mode: 0o600, flag: "wx" }); await rename(tempPath, filePath); }
+  try {
+    await writeFile(tempPath, `${JSON.stringify(store, null, 2)}\n`, { encoding: "utf8", mode: 0o600, flag: "wx" });
+    try {
+      await rename(tempPath, filePath);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (process.platform !== "win32" || !["EPERM", "EACCES", "EXDEV"].includes(code ?? "")) throw error;
+      // Some Windows-backed filesystems do not permit replacing a destination with rename.
+      // The caller holds the per-store lock, so copying the fully written temp file is safe.
+      await copyFile(tempPath, filePath);
+    }
+  }
   finally { await rm(tempPath, { force: true }).catch(() => {}); }
 }
 

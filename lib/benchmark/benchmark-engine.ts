@@ -58,7 +58,7 @@ export interface BenchmarkComparisonResult {
   };
   portfolioTotals: {
     totalFiles: number;
-    totalManualHoursSaved: number;
+    totalEstimatedManualHours: number;
     totalEstimatedSavingsDollars: number;
     averageFeasibility: number;
     totalSecurityFindings: number;
@@ -289,7 +289,7 @@ export function compareBenchmarkProjects(
 
   // 3. Aggregate totals
   const totalFiles = projects.reduce((acc, p) => acc + p.fileCount, 0);
-  const totalManualHoursSaved = projects.reduce((acc, p) => acc + p.estimatedManualHours, 0);
+  const totalEstimatedManualHours = projects.reduce((acc, p) => acc + p.estimatedManualHours, 0);
   const totalEstimatedSavingsDollars = projects.reduce((acc, p) => acc + p.costSavingsDollars, 0);
   const averageFeasibility = Math.round(
     projects.reduce((acc, p) => acc + p.feasibilityScore, 0) / projects.length
@@ -311,7 +311,7 @@ export function compareBenchmarkProjects(
     },
     portfolioTotals: {
       totalFiles,
-      totalManualHoursSaved,
+      totalEstimatedManualHours,
       totalEstimatedSavingsDollars,
       averageFeasibility,
       totalSecurityFindings,
@@ -338,8 +338,8 @@ export function generateComparativeDossier(benchmark: BenchmarkComparisonResult)
   lines.push(`- **Projects Benchmarked**: ${benchmark.projectCount} codebases`);
   lines.push(`- **Total Scanned Files**: ${benchmark.portfolioTotals.totalFiles} files`);
   lines.push(`- **Portfolio Average Feasibility**: **${benchmark.portfolioTotals.averageFeasibility}%**`);
-  lines.push(`- **Estimated Manual Engineering Effort**: **${benchmark.portfolioTotals.totalManualHoursSaved} hours**`);
-  lines.push(`- **Projected Autonomous Migration Savings**: **\$${benchmark.portfolioTotals.totalEstimatedSavingsDollars.toLocaleString()} USD**`);
+  lines.push(`- **Estimated Manual Engineering Effort**: **${benchmark.portfolioTotals.totalEstimatedManualHours} hours**`);
+  lines.push(`- **Illustrative Manual-Effort Value Estimate**: **\$${benchmark.portfolioTotals.totalEstimatedSavingsDollars.toLocaleString()} USD** (fixed-rate heuristic, not measured savings)`);
   lines.push(`- **Identified Security & AST Warnings**: ${benchmark.portfolioTotals.totalSecurityFindings} findings across portfolio`);
   lines.push("");
 
@@ -357,12 +357,12 @@ export function generateComparativeDossier(benchmark: BenchmarkComparisonResult)
   lines.push(`| **Dependency Health** | ${benchmark.projects.map((p) => `${p.dimensions.dependencies}%`).join(" | ")} |`);
   lines.push(`| **Structure Integrity** | ${benchmark.projects.map((p) => `${p.dimensions.structure}%`).join(" | ")} |`);
   lines.push(`| **Total Files** | ${benchmark.projects.map((p) => `${p.fileCount}`).join(" | ")} |`);
-  lines.push(`| **Critical/High CVEs** | ${benchmark.projects.map((p) => `${p.findingsSummary.critical} critical, ${p.findingsSummary.high} high`).join(" | ")} |`);
+  lines.push(`| **Critical/High Static Findings** | ${benchmark.projects.map((p) => `${p.findingsSummary.critical} critical, ${p.findingsSummary.high} high`).join(" | ")} |`);
   lines.push(`| **Syntax Errors** | ${benchmark.projects.map((p) => `${p.syntaxErrors}`).join(" | ")} |`);
   lines.push(`| **Undeclared Imports** | ${benchmark.projects.map((p) => `${p.undeclaredPackages}`).join(" | ")} |`);
   lines.push(`| **Manual Effort (Est.)** | ${benchmark.projects.map((p) => `~${p.estimatedManualHours} hours`).join(" | ")} |`);
   lines.push(`| **Autonomous Time (Est.)** | ${benchmark.projects.map((p) => `~${p.estimatedAutonomousMinutes} minutes`).join(" | ")} |`);
-  lines.push(`| **Cost Savings (ROI)** | ${benchmark.projects.map((p) => `\$${p.costSavingsDollars.toLocaleString()}`).join(" | ")} |`);
+  lines.push(`| **Illustrative Cost Estimate** | ${benchmark.projects.map((p) => `\$${p.costSavingsDollars.toLocaleString()}`).join(" | ")} |`);
   lines.push("");
 
   // 3. Recommended Migration Sequence
@@ -389,7 +389,7 @@ export function generateComparativeDossier(benchmark: BenchmarkComparisonResult)
   lines.push("");
   lines.push("- **AST Determinism**: Feasibility and structural scores are derived through deterministic AST parsing without runtime code execution.");
   lines.push("- **Safe Isolation**: Repository boundaries are strictly segregated during comparative analysis.");
-  lines.push("- **Production Next.js Standards**: Evaluated targets conform to Next.js 15 App Router and Expo Router conventions with TypeScript strictness.");
+  lines.push("- **Target Frameworks**: Evaluated targets use Next.js App Router or Expo Router conventions with TypeScript strictness.");
   lines.push("");
 
   return lines.join("\n");

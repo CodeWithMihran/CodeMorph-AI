@@ -185,7 +185,7 @@ export function CodeInspectorView({
   // Diff Computation
   const targetType = targetName.toLowerCase().includes("expo") ? "expo" : "nextjs";
 
-  // Detect applicable AST codemods for active file
+  // Detect applicable deterministic text codemods for active file
   const applicableCodemods = useMemo(() => {
     if (!selectedEntry) return [];
     return detectApplicableCodemods(selectedEntry.path, activeContent, targetType);
@@ -872,11 +872,11 @@ export function CodeInspectorView({
                 </div>
               </div>
 
-              {/* One-Click Deterministic AST Codemod Quick-Fix Banner */}
+              {/* One-Click Deterministic Codemod Quick-Fix Banner */}
               {applicableCodemods.length > 0 && (
                 <div className="codemod-quickfix-banner">
                   <div className="codemod-title-col">
-                    <span className="codemod-banner-title">⚡ AST QUICK-FIXES:</span>
+                    <span className="codemod-banner-title">⚡ CODE QUICK-FIXES:</span>
                     <span className="codemod-banner-desc">Deterministic automated transforms ready to apply</span>
                   </div>
                   <div className="codemod-pills-row">

@@ -127,10 +127,12 @@ export function validateNavigationLinks(
 
   // Convert known route paths into route matchers (support dynamic routes like /users/[id])
   const routeMatchers = knownRoutePaths.map((route) => {
-    // Escape regex except for [param]
-    const regexPattern = route
-      .replace(/\[\.\.\.[a-zA-Z0-9_]+\]/g, ".*") // Catch-all [...slug]
-      .replace(/\[[a-zA-Z0-9_]+\]/g, "[^/]+"); // Single segment [id]
+    const regexPattern = route.split("/").map((segment) => {
+      if (/^\[\.\.\.[a-zA-Z0-9_]+\]$/.test(segment)) return ".+";
+      if (/^\[\[\.\.\.[a-zA-Z0-9_]+\]\]$/.test(segment)) return "(?:.+)?";
+      if (/^\[[a-zA-Z0-9_]+\]$/.test(segment)) return "[^/]+";
+      return segment.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    }).join("/");
     return new RegExp(`^${regexPattern}$`);
   });
 

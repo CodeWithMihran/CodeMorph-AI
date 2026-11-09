@@ -33,30 +33,49 @@ export function transformReactRouterToNext(content: string): CodemodResult {
   // Replace useNavigate -> useRouter
   if (/\buseNavigate\b/.test(code)) {
     nextNavImports.add("useRouter");
-    // const navigate = useNavigate(); -> const router = useRouter();
+    const navigateAliases = new Map<string, string>();
     code = code.replace(
-      /(const|let|var)\s+([a-zA-Z0-9_$]+)\s*=\s*useNavigate\s*\(\s*\);?/g,
-      "$1 router = useRouter();"
-    );
-    // navigate('/path') -> router.push('/path')
-    code = code.replace(/\b([a-zA-Z0-9_$]+)\s*\(\s*(['"`][^'"`]+['"`])\s*\)/g, (match, fn, arg) => {
-      if (fn === "navigate" || fn === "router") {
-        return `router.push(${arg})`;
+      /(const|let|var)\s+([a-zA-Z_$][\w$]*)\s*=\s*useNavigate\s*\(\s*\);?/g,
+      (_match, declaration, alias: string) => {
+        const routerName = alias === "navigate" ? "router" : alias;
+        navigateAliases.set(alias, routerName);
+        return `${declaration} ${routerName} = useRouter();`;
       }
-      return match;
-    });
-    // navigate(-1) -> router.back()
-    code = code.replace(/\bnavigate\s*\(\s*-1\s*\)/g, "router.back()");
+    );
+    for (const [alias, routerName] of navigateAliases) {
+      const escapedAlias = alias.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const escapedRouter = routerName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      code = code.replace(new RegExp("\\b" + escapedAlias + "\\s*\\(\\s*(['\"`][^'\"`]+['\"`])\\s*\\)", "g"), `${routerName}.push($1)`);
+      code = code.replace(new RegExp(`\\b${escapedAlias}\\s*\\(\\s*-1\\s*\\)`, "g"), `${routerName}.back()`);
+      // Keep support for standalone navigate()/router() calls without a captured declaration.
+      if (alias !== "navigate" && alias !== "router") continue;
+      code = code.replace(new RegExp("\\b" + escapedRouter + "\\s*\\(\\s*(['\"`][^'\"`]+['\"`])\\s*\\)", "g"), `${routerName}.push($1)`);
+      code = code.replace(new RegExp(`\\b${escapedRouter}\\s*\\(\\s*-1\\s*\\)`, "g"), `${routerName}.back()`);
+    }
+    if (!navigateAliases.has("navigate") && !navigateAliases.has("router")) {
+      code = code.replace(/\bnavigate\s*\(\s*(['"`][^'"`]+['"`])\s*\)/g, "router.push($1)");
+      code = code.replace(/\bnavigate\s*\(\s*-1\s*\)/g, "router.back()");
+    }
   }
 
   // Replace useLocation -> usePathname
   if (/\buseLocation\b/.test(code)) {
     nextNavImports.add("usePathname");
+    const locationAliases = new Set<string>();
     code = code.replace(
-      /(const|let|var)\s+([a-zA-Z0-9_$]+)\s*=\s*useLocation\s*\(\s*\);?/g,
-      "$1 pathname = usePathname();"
+      /(const|let|var)\s+([a-zA-Z_$][\w$]*)\s*=\s*useLocation\s*\(\s*\);?/g,
+      (_match, declaration, alias: string) => {
+        const pathnameName = alias === "location" ? "pathname" : alias;
+        locationAliases.add(alias);
+        return `${declaration} ${pathnameName} = usePathname();`;
+      }
     );
-    code = code.replace(/\blocation\.pathname\b/g, "pathname");
+    for (const alias of locationAliases) {
+      const escapedAlias = alias.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const pathnameName = alias === "location" ? "pathname" : alias;
+      code = code.replace(new RegExp(`\\b${escapedAlias}\\.pathname\\b`, "g"), pathnameName);
+    }
+    if (!locationAliases.has("location")) code = code.replace(/\blocation\.pathname\b/g, "pathname");
   }
 
   // Replace useParams

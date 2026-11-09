@@ -98,8 +98,10 @@ export function ProceduralRuleStudioView() {
       resolution: description,
       pattern,
       replacement,
+      isRegex,
+      flags,
     });
-  }, [ruleName, description, pattern, replacement]);
+  }, [ruleName, description, pattern, replacement, isRegex, flags]);
 
   // Live transform evaluation
   const transformResult = useMemo(() => {

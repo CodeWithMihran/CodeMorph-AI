@@ -100,8 +100,8 @@ export default function HeaderNav() {
     sourceFramework: "react-spa",
     target: "nextjs-app-router-typescript",
     category: "directives",
-    pattern: "^((?:/\\*[\\s\\S]*?\\*/\\s*|//.*\\s*)*)(import\\s)",
-    replacement: '"use client";\n\n$1$2',
+    pattern: "^(import\\s)",
+    replacement: '"use client";\n\n$1',
     isRegex: true,
     flags: "m",
     trigger: "useState",
@@ -305,6 +305,8 @@ export function validateRuleSafety(rule: {
   resolution?: string;
   pattern?: string;
   replacement?: string;
+  isRegex?: boolean;
+  flags?: string;
 }): SafetyCheckResult {
   const issues: string[] = [];
 
@@ -352,6 +354,26 @@ export function validateRuleSafety(rule: {
     if (dangerousBacktracking.test(rule.pattern)) {
       issues.push("Regular expression pattern contains dangerous nested quantifiers prone to catastrophic backtracking.");
     }
+  }
+
+  if (rule.pattern && rule.isRegex !== false) {
+    if (rule.pattern.length > 1_000) issues.push("Regular expression pattern exceeds the 1,000-character safety limit.");
+    const ambiguousQuantifiers = [
+      /\([^)]*(?:[*+]|\{\d+(?:,\d*)?\})[^)]*\)(?:[*+]|\{\d+(?:,\d*)?\})/,
+      /\([^)]*\|[^)]*\)(?:[*+]|\{\d+(?:,\d*)?\})/,
+      /(?:\.\*|\.\+){2}/,
+      /(?:[*+]|\{\d*,\})\s*(?:[*+]|\{\d*,\})/,
+    ];
+    if (ambiguousQuantifiers.some((candidate) => candidate.test(rule.pattern ?? ""))) {
+      issues.push("Regular expression pattern contains ambiguous nested or repeated quantifiers that can cause catastrophic backtracking.");
+    }
+    const flags = rule.flags ?? "g";
+    if (!/^(?!.*(.).*\1)[dgimsuvy]*$/.test(flags)) issues.push("Regular expression flags are invalid or duplicated.");
+    try { new RegExp(rule.pattern, flags); }
+    catch { issues.push("Regular expression pattern is invalid."); }
+  }
+  for (const [label, value] of Object.entries({ trigger: rule.trigger, resolution: rule.resolution, replacement: rule.replacement })) {
+    if (typeof value === "string" && value.length > 5_000) issues.push(`Rule ${label} exceeds the 5,000-character safety limit.`);
   }
 
   return {
@@ -422,6 +444,9 @@ export function evaluateRuleTransform(
   const startTime = performance.now();
 
   try {
+    if (snippet.length > 20_000) throw new Error("Test snippet exceeds the 20,000-character rule evaluation limit.");
+    const safety = validateRuleSafety(rule);
+    if (!safety.safe) throw new Error(safety.issues.join(" "));
     let transformed = snippet;
     let matchesCount = 0;
 
@@ -513,6 +538,7 @@ export function importTeamRuleset(jsonString: string): {
   const imported: StudioRule[] = [];
 
   try {
+    if (jsonString.length > 1_000_000) return { imported: [], errors: ["Ruleset exceeds the 1 MB import limit."] };
     const parsed = JSON.parse(jsonString) as unknown;
     if (!parsed || typeof parsed !== "object") {
       return { imported: [], errors: ["Invalid ruleset format: Root must be a JSON object."] };
@@ -524,6 +550,7 @@ export function importTeamRuleset(jsonString: string): {
     if (!rawRules) {
       return { imported: [], errors: ["No 'rules' array found in the supplied JSON."] };
     }
+    if (rawRules.length > 250) return { imported: [], errors: ["Ruleset exceeds the 250-rule import limit."] };
 
     for (let i = 0; i < rawRules.length; i++) {
       const item = rawRules[i] as Record<string, unknown>;
@@ -548,6 +575,8 @@ export function importTeamRuleset(jsonString: string): {
         resolution: typeof item.resolution === "string" ? item.resolution : "",
         pattern: item.pattern,
         replacement: item.replacement,
+        isRegex: Boolean(item.isRegex),
+        flags: typeof item.flags === "string" ? item.flags : "g",
       });
 
       if (!safety.safe) {

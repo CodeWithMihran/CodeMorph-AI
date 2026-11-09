@@ -1196,9 +1196,15 @@ test("Expo scaffold and generated-output validation enforce React Native primiti
   assert.ok(entryMap.has("tsconfig.json"));
   assert.match(entryMap.get("package.json"), /"expo":/);
   assert.match(entryMap.get("package.json"), /"expo-router":/);
-  assert.match(entryMap.get("package.json"), /"react-native":/);
+  assert.match(entryMap.get("package.json"), /"react-native": "0\.88\.0"/);
+  assert.match(entryMap.get("package.json"), /"jest": "\^30\.5\.2"/);
   assert.match(entryMap.get("app.json"), /"plugins":\s*\[\s*"expo-router"\s*\]/);
   assert.match(entryMap.get("app/_layout.tsx"), /import\s*\{\s*Stack\s*\}\s*from\s*"expo-router"/);
+  const nativewindEntries = new Map(scaffold("Nativewind", "Use utility styling", "expo", { styling: "nativewind" }).map((entry) => [entry.path, entry.content]));
+  assert.ok(nativewindEntries.has("babel.config.js"));
+  assert.ok(nativewindEntries.has("metro.config.js"));
+  assert.ok(nativewindEntries.has("tailwind.config.js"));
+  assert.match(nativewindEntries.get("metro.config.js"), /withNativeWind/);
 
   // Test route mapping in Expo
   const validMobileFiles = [
@@ -2041,6 +2047,7 @@ test("Automated test suite generator synthesizes route smoke tests, navigation s
   const expoSetup = expoTestMap.get("jest.setup.js");
   assert.match(expoSetup, /jest\.mock\("expo-router"/);
   assert.match(expoSetup, /jest\.mock\("react-native-safe-area-context"/);
+  assert.doesNotMatch(expoSetup, /:\s*\{\s*children\?/i, "JavaScript Jest setup must not contain TypeScript-only annotations");
 
   // 3. Integration with scaffold configuration
   // Scaffold with test suite enabled (default)
@@ -2296,6 +2303,17 @@ export function Profile() {
   assert.match(routerResult.code, /const router = useRouter\(\)/);
   assert.match(routerResult.code, /router\.push\("\/dashboard"\)/);
   assert.match(routerResult.code, /<Link href="\/settings">/);
+
+  const aliasedRouterResult = transformReactRouterToNext(`import { useNavigate, useLocation } from "react-router-dom";
+export function AliasedNavigation() {
+  const goTo = useNavigate();
+  const currentRoute = useLocation();
+  return <button onClick={() => goTo("/profile")}>{currentRoute.pathname}</button>;
+}`);
+  assert.match(aliasedRouterResult.code, /const goTo = useRouter\(\)/);
+  assert.match(aliasedRouterResult.code, /goTo\.push\("\/profile"\)/);
+  assert.match(aliasedRouterResult.code, /const currentRoute = usePathname\(\)/);
+  assert.match(aliasedRouterResult.code, /\{currentRoute\}/);
 
   // 2. Client Directive Injection Codemod
   const hookComponent = `import React, { useState } from "react";
@@ -2850,6 +2868,9 @@ test("Procedural memory rule studio engine evaluates transforms, validates synta
   const safeCheck = validateRuleSafety(safeRule);
   assert.equal(safeCheck.safe, true);
   assert.equal(safeCheck.issues.length, 0);
+  const clientRule = DEFAULT_STUDIO_RULES.find((rule) => rule.id === "rule-client-directive-injection");
+  const clientRuleResult = evaluateRuleTransform("import React from \"react\";\nexport function App() { return null; }", clientRule);
+  assert.match(clientRuleResult.transformed, /"use client";\s*import React/);
 
   // Guardrail check against prompt injection
   const injectionRule = {
@@ -2883,6 +2904,8 @@ test("Procedural memory rule studio engine evaluates transforms, validates synta
   const backtrackingCheck = validateRuleSafety(backtrackingRule);
   assert.equal(backtrackingCheck.safe, false);
   assert.ok(backtrackingCheck.issues.some((i) => i.includes("backtracking")));
+  const ambiguousBacktracking = validateRuleSafety({ pattern: "^(a|aa)+$", replacement: "", isRegex: true });
+  assert.equal(ambiguousBacktracking.safe, false, "ambiguous quantified alternations are rejected");
 
   // 4. Line Diff computation
   const beforeText = "line 1\nline 2\nline 3";
@@ -2998,6 +3021,11 @@ export default function Nav() {
   const cleanNavResult = validateNavigationLinks(cleanNavEntries, knownRoutes);
   assert.equal(cleanNavResult.valid, true);
   assert.equal(cleanNavResult.deadLinks.length, 0);
+  const punctuationRoute = validateNavigationLinks(
+    [{ path: "app/page.tsx", content: '<Link href="/release/v1.0">Release</Link><Link href="/release/v1x0">Wrong</Link>' }],
+    ["/release/v1.0"]
+  );
+  assert.deepEqual(punctuationRoute.deadLinks.map((link) => link.targetUrl), ["/release/v1x0"], "route matching treats punctuation literally");
 
   // 3. Accessibility & Metadata Compliance
   const accessibleEntries = [
