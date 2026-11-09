@@ -832,6 +832,7 @@ export default function MigratePage() {
               entries={generatedEntries}
               targetName={targetStack}
               onDownloadZip={handleDownloadAgain}
+              onUpdateEntries={(updated) => setGeneratedEntries(updated)}
             />
           )}
 

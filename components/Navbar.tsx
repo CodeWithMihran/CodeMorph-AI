@@ -24,6 +24,7 @@ export function Navbar() {
     { label: "Dashboard", href: "/", icon: "▦" },
     { label: "Code Audit", href: "/audit", icon: "🛡" },
     { label: "Feasibility Score", href: "/feasibility", icon: "⚡" },
+    { label: "Portfolio Benchmark", href: "/benchmark", icon: "📊" },
     { label: "Stack Migration", href: "/migrate", icon: "⇄" },
     { label: "Self-Learning Rules", href: "/memory", icon: "🧠" },
   ];

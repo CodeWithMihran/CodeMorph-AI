@@ -115,7 +115,7 @@ export async function POST(request: Request) {
     const scaffoldConfig = isJsonRecord(body.scaffoldConfig)
       ? (body.scaffoldConfig as unknown as ScaffoldConfig)
       : undefined;
-    let projectEntries = [...scaffold(safeSummary, body.goal.trim(), target, scaffoldConfig), ...generatedFiles];
+    let projectEntries = [...scaffold(safeSummary, body.goal.trim(), target, scaffoldConfig, generatedFiles), ...generatedFiles];
     let validation = target === "expo"
       ? {
           status: "not-run" as const,
@@ -151,7 +151,7 @@ export async function POST(request: Request) {
         throw new ModelError(`The single build repair attempt removed required source route${stillMissing.length === 1 ? "" : "s"}: ${stillMissing.join(", ")}. No project ZIP was created.`, 422);
       }
       safeSummary = repaired.summary.trim().slice(0, 500) || safeSummary;
-      projectEntries = [...scaffold(safeSummary, body.goal.trim(), target, scaffoldConfig), ...generatedFiles];
+      projectEntries = [...scaffold(safeSummary, body.goal.trim(), target, scaffoldConfig, generatedFiles), ...generatedFiles];
       validation = await validateGeneratedProject(projectEntries, expectedRoutes);
       if (validation.status === "passed") {
         memoryRulesSaved = await recordVerifiedRepair({

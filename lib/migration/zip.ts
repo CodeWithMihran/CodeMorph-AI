@@ -7,9 +7,11 @@ for (let n = 0; n < 256; n++) {
   CRC_TABLE[n] = c >>> 0;
 }
 
-function crc32(bytes: Buffer) {
+function crc32(bytes: Uint8Array): number {
   let crc = 0xffffffff;
-  for (const byte of bytes) crc = CRC_TABLE[(crc ^ byte) & 0xff] ^ (crc >>> 8);
+  for (let i = 0; i < bytes.length; i++) {
+    crc = CRC_TABLE[(crc ^ bytes[i]) & 0xff] ^ (crc >>> 8);
+  }
   return (crc ^ 0xffffffff) >>> 0;
 }
 
@@ -21,63 +23,80 @@ function dosDateTime(date: Date) {
   };
 }
 
-export function createZip(entries: ZipEntry[]) {
-  const localParts: Buffer[] = [];
-  const centralParts: Buffer[] = [];
+export function createZip(entries: ZipEntry[]): Buffer {
+  const encoder = new TextEncoder();
+  const localParts: Uint8Array[] = [];
+  const centralParts: Uint8Array[] = [];
   let localOffset = 0;
   const stamp = dosDateTime(new Date());
 
   for (const entry of entries) {
-    const name = Buffer.from(entry.path, "utf8");
-    const data = Buffer.from(entry.content, "utf8");
+    const name = encoder.encode(entry.path);
+    const data = encoder.encode(entry.content);
     const checksum = crc32(data);
-    const local = Buffer.alloc(30);
-    local.writeUInt32LE(0x04034b50, 0);
-    local.writeUInt16LE(20, 4);
-    local.writeUInt16LE(0x0800, 6);
-    local.writeUInt16LE(0, 8);
-    local.writeUInt16LE(stamp.time, 10);
-    local.writeUInt16LE(stamp.date, 12);
-    local.writeUInt32LE(checksum, 14);
-    local.writeUInt32LE(data.length, 18);
-    local.writeUInt32LE(data.length, 22);
-    local.writeUInt16LE(name.length, 26);
-    local.writeUInt16LE(0, 28);
+
+    const local = new Uint8Array(30);
+    const localView = new DataView(local.buffer);
+    localView.setUint32(0, 0x04034b50, true);
+    localView.setUint16(4, 20, true);
+    localView.setUint16(6, 0x0800, true);
+    localView.setUint16(8, 0, true);
+    localView.setUint16(10, stamp.time, true);
+    localView.setUint16(12, stamp.date, true);
+    localView.setUint32(14, checksum, true);
+    localView.setUint32(18, data.length, true);
+    localView.setUint32(22, data.length, true);
+    localView.setUint16(26, name.length, true);
+    localView.setUint16(28, 0, true);
     localParts.push(local, name, data);
 
-    const central = Buffer.alloc(46);
-    central.writeUInt32LE(0x02014b50, 0);
-    central.writeUInt16LE(20, 4);
-    central.writeUInt16LE(20, 6);
-    central.writeUInt16LE(0x0800, 8);
-    central.writeUInt16LE(0, 10);
-    central.writeUInt16LE(stamp.time, 12);
-    central.writeUInt16LE(stamp.date, 14);
-    central.writeUInt32LE(checksum, 16);
-    central.writeUInt32LE(data.length, 20);
-    central.writeUInt32LE(data.length, 24);
-    central.writeUInt16LE(name.length, 28);
-    central.writeUInt16LE(0, 30);
-    central.writeUInt16LE(0, 32);
-    central.writeUInt16LE(0, 34);
-    central.writeUInt16LE(0, 36);
-    central.writeUInt32LE(0, 38);
-    central.writeUInt32LE(localOffset, 42);
+    const central = new Uint8Array(46);
+    const centralView = new DataView(central.buffer);
+    centralView.setUint32(0, 0x02014b50, true);
+    centralView.setUint16(4, 20, true);
+    centralView.setUint16(6, 20, true);
+    centralView.setUint16(8, 0x0800, true);
+    centralView.setUint16(10, 0, true);
+    centralView.setUint16(12, stamp.time, true);
+    centralView.setUint16(14, stamp.date, true);
+    centralView.setUint32(16, checksum, true);
+    centralView.setUint32(20, data.length, true);
+    centralView.setUint32(24, data.length, true);
+    centralView.setUint16(28, name.length, true);
+    centralView.setUint16(30, 0, true);
+    centralView.setUint16(32, 0, true);
+    centralView.setUint16(34, 0, true);
+    centralView.setUint16(36, 0, true);
+    centralView.setUint32(38, 0, true);
+    centralView.setUint32(42, localOffset, true);
     centralParts.push(central, name);
     localOffset += local.length + name.length + data.length;
   }
 
-  const centralDirectory = Buffer.concat(centralParts);
-  const end = Buffer.alloc(22);
-  end.writeUInt32LE(0x06054b50, 0);
-  end.writeUInt16LE(0, 4);
-  end.writeUInt16LE(0, 6);
-  end.writeUInt16LE(entries.length, 8);
-  end.writeUInt16LE(entries.length, 10);
-  end.writeUInt32LE(centralDirectory.length, 12);
-  end.writeUInt32LE(localOffset, 16);
-  end.writeUInt16LE(0, 20);
-  return Buffer.concat([...localParts, centralDirectory, end]);
+  const centralDirLength = centralParts.reduce((sum, p) => sum + p.length, 0);
+  const end = new Uint8Array(22);
+  const endView = new DataView(end.buffer);
+  endView.setUint32(0, 0x06054b50, true);
+  endView.setUint16(4, 0, true);
+  endView.setUint16(6, 0, true);
+  endView.setUint16(8, entries.length, true);
+  endView.setUint16(10, entries.length, true);
+  endView.setUint32(12, centralDirLength, true);
+  endView.setUint32(16, localOffset, true);
+  endView.setUint16(20, 0, true);
+
+  const totalLength = localOffset + centralDirLength + end.length;
+  const result = new Uint8Array(totalLength);
+  let pos = 0;
+  for (const part of [...localParts, ...centralParts, end]) {
+    result.set(part, pos);
+    pos += part.length;
+  }
+
+  if (typeof Buffer !== "undefined" && typeof Buffer.from === "function") {
+    return Buffer.from(result.buffer, result.byteOffset, result.byteLength);
+  }
+  return result as unknown as Buffer;
 }
 
 export function unpackStoredZip(buffer: ArrayBuffer | Buffer): ZipEntry[] {

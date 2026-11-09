@@ -2,6 +2,9 @@
   "name": "codemorph-ai",
   "version": "0.1.0",
   "private": true,
+  "bin": {
+    "codemorph": "./bin/codemorph.cjs"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build --webpack",
@@ -10,7 +13,8 @@
     "test": "node --test scripts/test-core.cjs",
     "validate:fixtures": "node scripts/validate-worker-fixtures.cjs",
     "evaluate:migrations": "node scripts/evaluate-migrations.cjs",
-    "evaluate:migrations:static": "node scripts/evaluate-migrations.cjs --static-only"
+    "evaluate:migrations:static": "node scripts/evaluate-migrations.cjs --static-only",
+    "cli": "node bin/codemorph.cjs"
   },
   "dependencies": {
     "next": "16.4.3",

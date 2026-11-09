@@ -1,8 +1,12 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import React, { useState, useMemo, useRef } from "react";
 import type { ZipEntry } from "@/lib/migration/zip";
+import { createZip } from "@/lib/migration/zip";
 import { computeLineDiff, type DiffSummary } from "@/lib/diff/line-diff";
+import { validateFileSyntax, type ValidationStatus } from "@/lib/editor/client-validator";
+import { detectApplicableCodemods, type CodemodAction } from "@/lib/codemods/engine";
+import { SimulatedDevicePreview } from "./SimulatedDevicePreview";
 
 interface SourceManifest {
   framework: string;
@@ -15,16 +19,34 @@ interface CodeInspectorViewProps {
   entries: ZipEntry[];
   targetName: string;
   onDownloadZip?: () => void;
+  onUpdateEntries?: (updatedEntries: ZipEntry[]) => void;
 }
 
-type ViewMode = "code" | "split" | "unified";
+type ViewMode = "code" | "edit" | "split" | "unified" | "preview";
+type CompareBaseline = "source" | "original";
 
-export function CodeInspectorView({ entries, targetName, onDownloadZip }: CodeInspectorViewProps) {
-  // Extract source manifest and filter out internal .codemorph files from tree
+export function CodeInspectorView({
+  entries,
+  targetName,
+  onDownloadZip,
+  onUpdateEntries,
+}: CodeInspectorViewProps) {
+  // Store initial generated entries as immutable baseline
+  const originalMap = useMemo(() => {
+    return new Map<string, string>(entries.map((e) => [e.path, e.content]));
+  }, [entries]);
+
+  // Working mutable entries state for hot-patching
+  const [projectEntries, setProjectEntries] = useState<ZipEntry[]>(() => entries);
+
+  // In-memory uncommitted drafts per file (path -> uncommitted text)
+  const [draftContents, setDraftContents] = useState<Record<string, string>>({});
+
+  // Extract source manifest and filter internal .codemorph files
   const { visibleEntries, sourceManifest } = useMemo(() => {
     let manifest: SourceManifest | null = null;
     const filtered: ZipEntry[] = [];
-    for (const entry of entries) {
+    for (const entry of projectEntries) {
       if (entry.path === ".codemorph/source-manifest.json") {
         try {
           manifest = JSON.parse(entry.content) as SourceManifest;
@@ -36,17 +58,62 @@ export function CodeInspectorView({ entries, targetName, onDownloadZip }: CodeIn
       }
     }
     return { visibleEntries: filtered, sourceManifest: manifest };
-  }, [entries]);
+  }, [projectEntries]);
 
   const [selectedPath, setSelectedPath] = useState<string>(() => {
-    const preferred = visibleEntries.find((e) => e.path === "app/page.tsx" || e.path === "app/index.tsx");
-    return preferred ? preferred.path : visibleEntries[0]?.path ?? "";
+    const preferred = entries.find((e) => e.path === "app/page.tsx" || e.path === "app/index.tsx");
+    return preferred ? preferred.path : entries[0]?.path ?? "";
   });
 
   const [searchQuery, setSearchQuery] = useState("");
   const [copied, setCopied] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("split");
+  const [compareBaseline, setCompareBaseline] = useState<CompareBaseline>("source");
   const [overrideSourcePath, setOverrideSourcePath] = useState<string>("");
+
+  const [saveToast, setSaveToast] = useState(false);
+  const [newFileModalOpen, setNewFileModalOpen] = useState(false);
+  const [newFilePath, setNewFilePath] = useState("");
+  const [newFileError, setNewFileError] = useState("");
+
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const lineGutterRef = useRef<HTMLDivElement>(null);
+
+  const selectedEntry = useMemo(() => {
+    return visibleEntries.find((e) => e.path === selectedPath) ?? visibleEntries[0] ?? null;
+  }, [visibleEntries, selectedPath]);
+
+  // Current active content for the selected file (prefers uncommitted draft if present)
+  const activeContent = useMemo(() => {
+    if (!selectedEntry) return "";
+    return draftContents[selectedEntry.path] ?? selectedEntry.content;
+  }, [selectedEntry, draftContents]);
+
+  const hasUnsavedChanges = useMemo(() => {
+    if (!selectedEntry) return false;
+    const draft = draftContents[selectedEntry.path];
+    return draft !== undefined && draft !== selectedEntry.content;
+  }, [selectedEntry, draftContents]);
+
+  // Syntax validation for active editor content
+  const syntaxStatus: ValidationStatus = useMemo(() => {
+    if (!selectedEntry) return { isValid: true, message: "No file selected", severity: "valid" };
+    return validateFileSyntax(selectedEntry.path, activeContent);
+  }, [selectedEntry, activeContent]);
+
+  // Track all modified files (either saved or drafted)
+  const modifiedFiles = useMemo(() => {
+    const modified = new Set<string>();
+    for (const entry of projectEntries) {
+      const orig = originalMap.get(entry.path);
+      const draft = draftContents[entry.path];
+      const effectiveContent = draft !== undefined ? draft : entry.content;
+      if (orig === undefined || orig !== effectiveContent) {
+        modified.add(entry.path);
+      }
+    }
+    return modified;
+  }, [projectEntries, originalMap, draftContents]);
 
   const filteredEntries = useMemo(() => {
     if (!searchQuery.trim()) return visibleEntries;
@@ -54,11 +121,7 @@ export function CodeInspectorView({ entries, targetName, onDownloadZip }: CodeIn
     return visibleEntries.filter((e) => e.path.toLowerCase().includes(q));
   }, [visibleEntries, searchQuery]);
 
-  const selectedEntry = useMemo(() => {
-    return visibleEntries.find((e) => e.path === selectedPath) ?? visibleEntries[0] ?? null;
-  }, [visibleEntries, selectedPath]);
-
-  // Determine paired source path
+  // Determine paired source path from legacy source repository
   const matchedSourcePath = useMemo(() => {
     if (overrideSourcePath) return overrideSourcePath;
     if (!sourceManifest || !selectedEntry) return "";
@@ -87,40 +150,232 @@ export function CodeInspectorView({ entries, targetName, onDownloadZip }: CodeIn
     return sourceManifest.files.find((f) => f.path === matchedSourcePath) ?? null;
   }, [sourceManifest, matchedSourcePath]);
 
-  // Compute Diff
+  // Diff Computation
+  const targetType = targetName.toLowerCase().includes("expo") ? "expo" : "nextjs";
+
+  // Detect applicable AST codemods for active file
+  const applicableCodemods = useMemo(() => {
+    if (!selectedEntry) return [];
+    return detectApplicableCodemods(selectedEntry.path, activeContent, targetType);
+  }, [selectedEntry, activeContent, targetType]);
+
+  const handleApplyCodemod = (action: CodemodAction) => {
+    if (!selectedEntry) return;
+    const res = action.apply(activeContent);
+    if (res.changed) {
+      setDraftContents((prev) => ({
+        ...prev,
+        [selectedEntry.path]: res.code,
+      }));
+      setSaveToast(true);
+      setTimeout(() => setSaveToast(false), 2500);
+    }
+  };
+
   const diffSummary: DiffSummary | null = useMemo(() => {
     if (!selectedEntry) return null;
-    const oldText = sourceFileEntry ? sourceFileEntry.content : "";
-    return computeLineDiff(oldText, selectedEntry.content);
-  }, [selectedEntry, sourceFileEntry]);
+    let baselineText = "";
+    if (compareBaseline === "source") {
+      baselineText = sourceFileEntry ? sourceFileEntry.content : "";
+    } else {
+      baselineText = originalMap.get(selectedEntry.path) ?? "";
+    }
+    return computeLineDiff(baselineText, activeContent);
+  }, [selectedEntry, compareBaseline, sourceFileEntry, originalMap, activeContent]);
 
   const lines = useMemo(() => {
     if (!selectedEntry) return [];
-    return selectedEntry.content.split("\n");
-  }, [selectedEntry]);
+    return activeContent.split("\n");
+  }, [selectedEntry, activeContent]);
+
+  // Handle Tab key in editor
+  const handleEditorKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Tab") {
+      e.preventDefault();
+      const target = e.currentTarget;
+      const start = target.selectionStart;
+      const end = target.selectionEnd;
+
+      const newContent = activeContent.substring(0, start) + "  " + activeContent.substring(end);
+      if (selectedEntry) {
+        setDraftContents((prev) => ({ ...prev, [selectedEntry.path]: newContent }));
+      }
+
+      setTimeout(() => {
+        target.selectionStart = target.selectionEnd = start + 2;
+      }, 0);
+    } else if ((e.ctrlKey || e.metaKey) && e.key === "s") {
+      e.preventDefault();
+      handleSaveCurrentFile();
+    }
+  };
+
+  // Synchronize scroll between line gutter and textarea
+  const handleScroll = (e: React.UIEvent<HTMLTextAreaElement>) => {
+    if (lineGutterRef.current) {
+      lineGutterRef.current.scrollTop = e.currentTarget.scrollTop;
+    }
+  };
+
+  // Save current file edits
+  const handleSaveCurrentFile = () => {
+    if (!selectedEntry) return;
+    const contentToSave = activeContent;
+    const updated = projectEntries.map((e) =>
+      e.path === selectedEntry.path ? { ...e, content: contentToSave } : e
+    );
+    setProjectEntries(updated);
+    setDraftContents((prev) => {
+      const next = { ...prev };
+      delete next[selectedEntry.path];
+      return next;
+    });
+    setSaveToast(true);
+    setTimeout(() => setSaveToast(false), 2000);
+    if (onUpdateEntries) {
+      onUpdateEntries(updated);
+    }
+  };
+
+  // Revert current file to original generated baseline
+  const handleRevertCurrentFile = () => {
+    if (!selectedEntry) return;
+    const originalContent = originalMap.get(selectedEntry.path);
+    if (originalContent !== undefined) {
+      setDraftContents((prev) => {
+        const next = { ...prev };
+        delete next[selectedEntry.path];
+        return next;
+      });
+      const updated = projectEntries.map((e) =>
+        e.path === selectedEntry.path ? { ...e, content: originalContent } : e
+      );
+      setProjectEntries(updated);
+      if (onUpdateEntries) {
+        onUpdateEntries(updated);
+      }
+    }
+  };
+
+  // Revert all modified files to original generated baseline
+  const handleRevertAllFiles = () => {
+    if (!window.confirm("Revert all files to the original generated version? All custom edits will be lost.")) {
+      return;
+    }
+    const reverted = projectEntries.map((e) => {
+      const orig = originalMap.get(e.path);
+      return orig !== undefined ? { ...e, content: orig } : e;
+    });
+    setProjectEntries(reverted);
+    setDraftContents({});
+    if (onUpdateEntries) {
+      onUpdateEntries(reverted);
+    }
+  };
+
+  // Add a new file
+  const handleCreateNewFile = (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanPath = newFilePath.trim().replace(/^\/+/, "");
+    if (!cleanPath) {
+      setNewFileError("Please specify a valid file path.");
+      return;
+    }
+    if (projectEntries.some((entry) => entry.path === cleanPath)) {
+      setNewFileError("A file with this path already exists.");
+      return;
+    }
+
+    const defaultContent = cleanPath.endsWith(".json")
+      ? "{\n  \n}\n"
+      : cleanPath.endsWith(".test.tsx") || cleanPath.endsWith(".test.ts")
+      ? `import { describe, it, expect } from "vitest";\n\ndescribe("${cleanPath}", () => {\n  it("executes automated smoke test successfully", () => {\n    expect(true).toBe(true);\n  });\n});\n`
+      : cleanPath.endsWith(".tsx") || cleanPath.endsWith(".jsx")
+      ? `import React from "react";\n\nexport default function Component() {\n  return <div>New Component</div>;\n}\n`
+      : cleanPath.endsWith(".env") || cleanPath.includes(".env.")
+      ? "# Local Environment Variables\n"
+      : `// ${cleanPath}\n`;
+
+    const updated: ZipEntry[] = [...projectEntries, { path: cleanPath, content: defaultContent }];
+    setProjectEntries(updated);
+    setSelectedPath(cleanPath);
+    setViewMode("edit");
+    setNewFileModalOpen(false);
+    setNewFilePath("");
+    setNewFileError("");
+    if (onUpdateEntries) {
+      onUpdateEntries(updated);
+    }
+  };
+
+  // Delete current file
+  const handleDeleteCurrentFile = () => {
+    if (!selectedEntry) return;
+    if (
+      selectedEntry.path === "app/layout.tsx" ||
+      selectedEntry.path === "app/_layout.tsx" ||
+      selectedEntry.path === "package.json"
+    ) {
+      if (!window.confirm(`Warning: "${selectedEntry.path}" is an essential scaffold file. Deleting it may cause build failures. Proceed?`)) {
+        return;
+      }
+    } else {
+      if (!window.confirm(`Are you sure you want to delete "${selectedEntry.path}"?`)) {
+        return;
+      }
+    }
+
+    const updated = projectEntries.filter((e) => e.path !== selectedEntry.path);
+    setProjectEntries(updated);
+    setDraftContents((prev) => {
+      const next = { ...prev };
+      delete next[selectedEntry.path];
+      return next;
+    });
+    const nextSelected = updated[0]?.path ?? "";
+    setSelectedPath(nextSelected);
+    if (onUpdateEntries) {
+      onUpdateEntries(updated);
+    }
+  };
+
+  // Hot-Patch & Download ZIP (packages in-memory entries with all drafts)
+  const handleDownloadHotPatchedZip = () => {
+    if (modifiedFiles.size === 0 && onDownloadZip) {
+      onDownloadZip();
+      return;
+    }
+
+    const finalEntries = projectEntries.map((e) => {
+      const draft = draftContents[e.path];
+      return draft !== undefined ? { ...e, content: draft } : e;
+    });
+
+    const zipBuffer = createZip(finalEntries);
+    const blob = new Blob([new Uint8Array(zipBuffer)], { type: "application/zip" });
+    const url = URL.createObjectURL(blob);
+    const downloadName = targetName.includes("Expo")
+      ? "codemorph-migrated-expo-app.zip"
+      : "codemorph-migrated-project.zip";
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = downloadName;
+    document.body.append(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
 
   const handleCopy = async () => {
     if (!selectedEntry) return;
     try {
-      await navigator.clipboard.writeText(selectedEntry.content);
+      await navigator.clipboard.writeText(activeContent);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
       // Fallback
     }
-  };
-
-  const handleDownloadSingleFile = () => {
-    if (!selectedEntry) return;
-    const blob = new Blob([selectedEntry.content], { type: "text/plain;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = selectedEntry.path.split("/").pop() || "download";
-    document.body.append(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
   function getFileCategory(path: string): { label: string; badgeClass: string } {
@@ -147,39 +402,70 @@ export function CodeInspectorView({ entries, targetName, onDownloadZip }: CodeIn
 
   return (
     <div className="inspector-container">
+      {/* Header with Title and Actions */}
       <div className="inspector-header">
         <div className="inspector-title-row">
-          <span className="step-badge success">INSPECTOR</span>
+          <span className="step-badge success">WORKBENCH</span>
           <div>
-            <h3 className="inspector-title">Generated Project Artifacts &amp; Code Inspector</h3>
+            <h3 className="inspector-title">Code Inspector &amp; Live Hot-Patching Sandbox</h3>
             <p className="inspector-subtitle">
-              Inspect synthesized {targetName} files, route mappings, and scaffolds before downloading.
+              Inspect, edit, and hot-patch synthesized {targetName} files before packaging.
+              {modifiedFiles.size > 0 && (
+                <span className="modified-counter-badge">
+                  {modifiedFiles.size} file{modifiedFiles.size === 1 ? "" : "s"} modified
+                </span>
+              )}
             </p>
           </div>
         </div>
-        {onDownloadZip && (
-          <button type="button" className="action-btn primary inspector-dl-btn" onClick={onDownloadZip}>
-            Download Full Project ZIP ➔
+
+        <div className="inspector-header-actions">
+          {modifiedFiles.size > 0 && (
+            <button
+              type="button"
+              className="action-btn secondary revert-all-btn"
+              onClick={handleRevertAllFiles}
+              title="Revert all files to generated baseline"
+            >
+              Reset All Edits
+            </button>
+          )}
+
+          <button
+            type="button"
+            className="action-btn primary inspector-dl-btn"
+            onClick={handleDownloadHotPatchedZip}
+          >
+            {modifiedFiles.size > 0 ? "Download Patched ZIP ➔" : "Download Project ZIP ➔"}
           </button>
-        )}
+        </div>
       </div>
 
       <div className="inspector-workspace-grid">
-        {/* SIDEBAR: File Tree */}
+        {/* SIDEBAR: File Tree & Actions */}
         <aside className="inspector-sidebar">
-          <div className="file-search-wrap">
+          <div className="sidebar-tools-row">
             <input
               type="text"
-              placeholder="Search files (e.g. page.tsx)..."
+              placeholder="Filter files..."
               className="file-search-input"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
+            <button
+              type="button"
+              className="add-file-btn"
+              onClick={() => setNewFileModalOpen(true)}
+              title="Add a new file to project"
+            >
+              + New File
+            </button>
           </div>
 
           <div className="inspector-file-list" role="list">
             {filteredEntries.map((entry) => {
               const isSelected = entry.path === selectedEntry?.path;
+              const isModified = modifiedFiles.has(entry.path);
               const cat = getFileCategory(entry.path);
               const lineCount = entry.content.split("\n").length;
               const byteSize = new TextEncoder().encode(entry.content).length;
@@ -188,7 +474,7 @@ export function CodeInspectorView({ entries, targetName, onDownloadZip }: CodeIn
                 <button
                   type="button"
                   key={entry.path}
-                  className={`file-item-btn ${isSelected ? "is-active" : ""}`}
+                  className={`file-item-btn ${isSelected ? "is-active" : ""} ${isModified ? "is-modified" : ""}`}
                   onClick={() => {
                     setSelectedPath(entry.path);
                     setOverrideSourcePath("");
@@ -199,6 +485,7 @@ export function CodeInspectorView({ entries, targetName, onDownloadZip }: CodeIn
                     <span className="file-name">
                       <code>{entry.path}</code>
                     </span>
+                    {isModified && <span className="mod-dot" title="Modified by developer">•</span>}
                   </div>
                   <div className="file-item-bottom">
                     <span className={`file-badge ${cat.badgeClass}`}>{cat.label}</span>
@@ -215,7 +502,7 @@ export function CodeInspectorView({ entries, targetName, onDownloadZip }: CodeIn
           </div>
         </aside>
 
-        {/* MAIN: Code & Diff Viewer */}
+        {/* MAIN: Code, Editor & Diff Viewer */}
         <main className="inspector-code-pane">
           {selectedEntry ? (
             <>
@@ -225,16 +512,26 @@ export function CodeInspectorView({ entries, targetName, onDownloadZip }: CodeIn
                   <span className="code-file-icon">📄</span>
                   <span className="code-file-path">{selectedEntry.path}</span>
                   <span className="code-file-badge">{getFileCategory(selectedEntry.path).label}</span>
+                  {modifiedFiles.has(selectedEntry.path) && (
+                    <span className="file-modified-pill">Customized</span>
+                  )}
                 </div>
 
-                {/* View Mode Toggle: Code vs Side-by-Side vs Unified */}
+                {/* Mode Selector: View Code, Edit Sandbox, Side-by-Side Diff, Unified Diff */}
                 <div className="diff-mode-toggle-group" role="group" aria-label="View Mode">
                   <button
                     type="button"
                     className={`diff-toggle-btn ${viewMode === "code" ? "is-active" : ""}`}
                     onClick={() => setViewMode("code")}
                   >
-                    Code
+                    View Code
+                  </button>
+                  <button
+                    type="button"
+                    className={`diff-toggle-btn edit-btn ${viewMode === "edit" ? "is-active" : ""}`}
+                    onClick={() => setViewMode("edit")}
+                  >
+                    ✏️ Edit &amp; Patch
                   </button>
                   <button
                     type="button"
@@ -250,32 +547,121 @@ export function CodeInspectorView({ entries, targetName, onDownloadZip }: CodeIn
                   >
                     Unified Diff
                   </button>
+                  <button
+                    type="button"
+                    className={`diff-toggle-btn preview-btn ${viewMode === "preview" ? "is-active" : ""}`}
+                    onClick={() => setViewMode("preview")}
+                  >
+                    👁️ Preview
+                  </button>
                 </div>
 
                 <div className="code-pane-actions">
-                  <button type="button" className="code-tool-btn" onClick={handleCopy}>
-                    {copied ? "✓ Copied" : "Copy Code"}
-                  </button>
-                  <button type="button" className="code-tool-btn" onClick={handleDownloadSingleFile}>
-                    Download File
-                  </button>
+                  {viewMode === "edit" ? (
+                    <>
+                      <button
+                        type="button"
+                        className="code-tool-btn save-btn"
+                        onClick={handleSaveCurrentFile}
+                        disabled={!hasUnsavedChanges}
+                      >
+                        {saveToast ? "✓ Saved!" : hasUnsavedChanges ? "Save Changes" : "Saved"}
+                      </button>
+                      {modifiedFiles.has(selectedEntry.path) && (
+                        <button
+                          type="button"
+                          className="code-tool-btn revert-btn"
+                          onClick={handleRevertCurrentFile}
+                          title="Revert this file to original generated version"
+                        >
+                          Revert
+                        </button>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <button type="button" className="code-tool-btn" onClick={handleCopy}>
+                        {copied ? "✓ Copied" : "Copy Code"}
+                      </button>
+                      <button
+                        type="button"
+                        className="code-tool-btn delete-btn"
+                        onClick={handleDeleteCurrentFile}
+                        title="Delete this file"
+                      >
+                        Delete
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
 
-              {/* Transformation Ancestor Banner (When Diff mode is active) */}
-              {viewMode !== "code" && (
+              {/* One-Click Deterministic AST Codemod Quick-Fix Banner */}
+              {applicableCodemods.length > 0 && (
+                <div className="codemod-quickfix-banner">
+                  <div className="codemod-title-col">
+                    <span className="codemod-banner-title">⚡ AST QUICK-FIXES:</span>
+                    <span className="codemod-banner-desc">Deterministic automated transforms ready to apply</span>
+                  </div>
+                  <div className="codemod-pills-row">
+                    {applicableCodemods.map((action) => (
+                      <button
+                        key={action.id}
+                        type="button"
+                        className="codemod-action-pill"
+                        onClick={() => handleApplyCodemod(action)}
+                        title={action.description}
+                      >
+                        <span className="codemod-pill-icon">{action.icon}</span>
+                        <span>{action.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Edit Mode Banner & Syntax Status Bar */}
+              {viewMode === "edit" && (
+                <div className="editor-status-banner">
+                  <div className="syntax-status-row">
+                    <span className={`syntax-badge ${syntaxStatus.severity}`}>
+                      {syntaxStatus.severity === "valid"
+                        ? "✓ Syntax Valid"
+                        : syntaxStatus.severity === "warning"
+                        ? "⚠️ Warning"
+                        : "✕ Syntax Error"}
+                    </span>
+                    <span className="syntax-msg">{syntaxStatus.message}</span>
+                  </div>
+                  <div className="editor-meta-info">
+                    <span>Press <code>Ctrl+S</code> / <code>Cmd+S</code> to save patch</span>
+                    <span>{lines.length} lines</span>
+                    <span>{new TextEncoder().encode(activeContent).length} bytes</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Transformation Ancestor & Diff Banner (when Diff mode is active) */}
+              {(viewMode === "split" || viewMode === "unified") && (
                 <div className="diff-ancestor-banner">
                   <div className="ancestor-info-col">
-                    <span className="ancestor-label">TRANSFORMATION ANCESTOR:</span>
-                    {sourceFileEntry ? (
-                      <span className="ancestor-path">
-                        <code>{sourceFileEntry.path}</code> ➔ <code>{selectedEntry.path}</code>
-                      </span>
-                    ) : (
-                      <span className="ancestor-path new-file">
-                        Newly synthesized target scaffold (No legacy ancestor)
-                      </span>
-                    )}
+                    <span className="ancestor-label">COMPARE WITH:</span>
+                    <div className="compare-mode-pills">
+                      <button
+                        type="button"
+                        className={`compare-pill ${compareBaseline === "source" ? "is-active" : ""}`}
+                        onClick={() => setCompareBaseline("source")}
+                      >
+                        Legacy Source Repository
+                      </button>
+                      <button
+                        type="button"
+                        className={`compare-pill ${compareBaseline === "original" ? "is-active" : ""}`}
+                        onClick={() => setCompareBaseline("original")}
+                      >
+                        Original AI-Generated Scaffold
+                      </button>
+                    </div>
                   </div>
 
                   {/* Diff Stats Pill */}
@@ -286,6 +672,8 @@ export function CodeInspectorView({ entries, targetName, onDownloadZip }: CodeIn
                       <span className="stat-status">
                         {diffSummary.isExactMatch
                           ? "IDENTICAL"
+                          : compareBaseline === "original"
+                          ? `${diffSummary.changes} CUSTOM EDITS`
                           : sourceFileEntry
                           ? `${diffSummary.changes} CHANGES`
                           : "NEW FILE"}
@@ -293,11 +681,11 @@ export function CodeInspectorView({ entries, targetName, onDownloadZip }: CodeIn
                     </div>
                   )}
 
-                  {/* Custom Source Compare Selector */}
-                  {sourceManifest && sourceManifest.files.length > 0 && (
+                  {/* Custom Source Compare Selector (for legacy source comparison) */}
+                  {compareBaseline === "source" && sourceManifest && sourceManifest.files.length > 0 && (
                     <div className="source-compare-picker">
                       <label htmlFor="source-compare-select" className="picker-lbl">
-                        Compare with:
+                        File:
                       </label>
                       <select
                         id="source-compare-select"
@@ -317,8 +705,9 @@ export function CodeInspectorView({ entries, targetName, onDownloadZip }: CodeIn
                 </div>
               )}
 
-              {/* VIEWPORT: Code or Diff */}
+              {/* VIEWPORT: Code, Live Editor, or Diff */}
               <div className="code-viewer-viewport">
+                {/* 1. Read-only Code View */}
                 {viewMode === "code" && (
                   <table className="code-table">
                     <tbody>
@@ -334,14 +723,49 @@ export function CodeInspectorView({ entries, targetName, onDownloadZip }: CodeIn
                   </table>
                 )}
 
+                {/* 2. Interactive Live Editor */}
+                {viewMode === "edit" && (
+                  <div className="live-editor-wrapper">
+                    <div className="editor-gutter" ref={lineGutterRef}>
+                      {lines.map((_, idx) => (
+                        <div key={idx} className="gutter-line-num">
+                          {idx + 1}
+                        </div>
+                      ))}
+                    </div>
+                    <textarea
+                      ref={textareaRef}
+                      className="editor-textarea"
+                      value={activeContent}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (selectedEntry) {
+                          setDraftContents((prev) => ({ ...prev, [selectedEntry.path]: val }));
+                        }
+                      }}
+                      onKeyDown={handleEditorKeyDown}
+                      onScroll={handleScroll}
+                      spellCheck={false}
+                      autoCapitalize="off"
+                      autoComplete="off"
+                      autoCorrect="off"
+                    />
+                  </div>
+                )}
+
+                {/* 3. Side-by-Side Diff */}
                 {viewMode === "split" && diffSummary && (
                   <div className="split-diff-wrapper">
                     <div className="split-diff-header">
                       <div className="split-header-col left">
-                        <span>Source: {sourceFileEntry ? sourceFileEntry.path : "(No Source File)"}</span>
+                        <span>
+                          {compareBaseline === "source"
+                            ? `Source: ${sourceFileEntry ? sourceFileEntry.path : "(No Legacy File)"}`
+                            : `Baseline Generated: ${selectedEntry.path}`}
+                        </span>
                       </div>
                       <div className="split-header-col right">
-                        <span>Target: {selectedEntry.path}</span>
+                        <span>Current Target: {selectedEntry.path}</span>
                       </div>
                     </div>
                     <table className="split-diff-table">
@@ -354,7 +778,7 @@ export function CodeInspectorView({ entries, targetName, onDownloadZip }: CodeIn
 
                           return (
                             <tr key={idx} className="split-row">
-                              {/* Left / Source */}
+                              {/* Left / Baseline */}
                               <td className={`line-num ${leftClass}`}>{leftCell ? leftCell.number : ""}</td>
                               <td className={`line-code ${leftClass}`}>
                                 <code>{leftCell ? leftCell.text || " " : " "}</code>
@@ -373,6 +797,7 @@ export function CodeInspectorView({ entries, targetName, onDownloadZip }: CodeIn
                   </div>
                 )}
 
+                {/* 4. Unified Diff */}
                 {viewMode === "unified" && diffSummary && (
                   <table className="unified-diff-table">
                     <tbody>
@@ -396,13 +821,109 @@ export function CodeInspectorView({ entries, targetName, onDownloadZip }: CodeIn
                     </tbody>
                   </table>
                 )}
+
+                {/* 5. In-Browser Simulated Device Preview */}
+                {viewMode === "preview" && (
+                  <SimulatedDevicePreview
+                    activeEntry={{ ...selectedEntry, content: activeContent }}
+                    allEntries={projectEntries.map((e) => ({
+                      ...e,
+                      content: draftContents[e.path] ?? e.content,
+                    }))}
+                    target={targetType}
+                    onSelectRoute={(path) => setSelectedPath(path)}
+                  />
+                )}
               </div>
             </>
           ) : (
-            <div className="empty-selection-msg">Select a file from the explorer to view contents.</div>
+            <div className="empty-selection-msg">Select a file from the explorer to view or edit.</div>
           )}
         </main>
       </div>
+
+      {/* New File Modal */}
+      {newFileModalOpen && (
+        <div className="modal-backdrop" onClick={() => setNewFileModalOpen(false)}>
+          <div className="new-file-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h4>Add New File to Synthesized Project</h4>
+              <button
+                type="button"
+                className="modal-close-btn"
+                onClick={() => setNewFileModalOpen(false)}
+              >
+                ✕
+              </button>
+            </div>
+            <form onSubmit={handleCreateNewFile} className="new-file-form">
+              <label htmlFor="new-file-input" className="form-label">
+                FILE PATH RELATIVE TO PROJECT ROOT
+              </label>
+              <input
+                id="new-file-input"
+                type="text"
+                className="text-input"
+                placeholder="e.g. app/api/ping/route.ts, .env.local, components/Banner.tsx"
+                value={newFilePath}
+                onChange={(e) => {
+                  setNewFilePath(e.target.value);
+                  setNewFileError("");
+                }}
+                autoFocus
+                required
+              />
+
+              {newFileError && <p className="inline-error">{newFileError}</p>}
+
+              <div className="quick-template-pills">
+                <span className="templates-label">Quick Templates:</span>
+                <button
+                  type="button"
+                  className="template-pill"
+                  onClick={() => setNewFilePath(".env.local")}
+                >
+                  .env.local
+                </button>
+                <button
+                  type="button"
+                  className="template-pill"
+                  onClick={() => setNewFilePath("app/api/health/route.ts")}
+                >
+                  app/api/health/route.ts
+                </button>
+                <button
+                  type="button"
+                  className="template-pill"
+                  onClick={() => setNewFilePath("components/CustomBanner.tsx")}
+                >
+                  components/CustomBanner.tsx
+                </button>
+                <button
+                  type="button"
+                  className="template-pill"
+                  onClick={() => setNewFilePath("__tests__/custom.test.tsx")}
+                >
+                  __tests__/custom.test.tsx
+                </button>
+              </div>
+
+              <div className="modal-actions-row">
+                <button
+                  type="button"
+                  className="action-btn secondary"
+                  onClick={() => setNewFileModalOpen(false)}
+                >
+                  Cancel
+                </button>
+                <button type="submit" className="action-btn primary">
+                  Create File &amp; Open Editor
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

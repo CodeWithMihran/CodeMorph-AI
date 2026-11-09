@@ -37,6 +37,7 @@ export function ScaffoldConfigPanel({
   const isStrict = config.strictTypeScript !== false;
   const includeCi = config.includeCiWorkflow !== false;
   const includeContainer = config.includeDockerfile !== false;
+  const includeTestSuite = config.includeTestSuite !== false;
   const renderingMode = config.renderingMode ?? "server-components";
   const pm = config.packageManager ?? "npm";
 
@@ -49,6 +50,14 @@ export function ScaffoldConfigPanel({
     isExpo ? "app/_layout.tsx" : "app/layout.tsx",
     "README.md",
   ];
+
+  if (includeTestSuite) {
+    if (isExpo) {
+      scaffoldedFiles.push("jest.config.js", "jest.setup.js", "__tests__/navigation.test.tsx");
+    } else {
+      scaffoldedFiles.push("vitest.config.ts", "vitest.setup.ts", "__tests__/routes.test.tsx", "__tests__/layout.test.tsx");
+    }
+  }
 
   if (isExpo && currentStyling === "nativewind") {
     scaffoldedFiles.push("global.css");
@@ -291,8 +300,29 @@ export function ScaffoldConfigPanel({
         </div>
       </div>
 
-      {/* Toggles for CI/CD and Containerization */}
+      {/* Toggles for CI/CD, Containerization, and Testing */}
       <div className="scaffold-toggles-row">
+        <label className="scaffold-toggle-box">
+          <input
+            type="checkbox"
+            checked={includeTestSuite}
+            onChange={(e) => handleUpdate("includeTestSuite", e.target.checked)}
+            disabled={disabled}
+          />
+          <div className="toggle-text">
+            <strong>
+              {isExpo
+                ? "Automated Test Suite (Jest + React Native Smoke Tests)"
+                : "Automated Test Suite (Vitest + React Testing Library)"}
+            </strong>
+            <span>
+              {isExpo
+                ? "Generates Jest runner, expo-router navigation mocks, and screen smoke test suites."
+                : "Generates Vitest configuration, jsdom environment, route smoke tests (__tests__/routes.test.tsx), and layout hierarchy tests."}
+            </span>
+          </div>
+        </label>
+
         <label className="scaffold-toggle-box">
           <input
             type="checkbox"
@@ -302,7 +332,7 @@ export function ScaffoldConfigPanel({
           />
           <div className="toggle-text">
             <strong>Automated CI/CD Workflow (`.github/workflows/ci.yml`)</strong>
-            <span>Generates GitHub Actions pipeline for linting, dependency caching, and build verification on push &amp; PR.</span>
+            <span>Generates GitHub Actions pipeline for linting, test execution, dependency caching, and build verification on push &amp; PR.</span>
           </div>
         </label>
 

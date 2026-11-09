@@ -1893,3 +1893,518 @@ test("Automated dependency replacement and compatibility shim engine classifies 
   assert.ok(expoResult.installShims.includes("expo-clipboard"));
   assert.ok(expoResult.compatibilityScore < 80);
 });
+
+test("In-browser code editor syntax validator and universal ZIP packaging enforce code integrity", () => {
+  const { validateFileSyntax } = require("../lib/editor/client-validator.ts");
+  const { createZip, unpackStoredZip } = require("../lib/migration/zip.ts");
+
+  // 1. JSON syntax tests
+  const validJson = validateFileSyntax("package.json", '{\n  "name": "my-app",\n  "version": "1.0.0"\n}');
+  assert.equal(validJson.isValid, true);
+  assert.equal(validJson.severity, "valid");
+
+  const brokenJson = validateFileSyntax("tsconfig.json", '{\n  "compilerOptions": {\n');
+  assert.equal(brokenJson.isValid, false);
+  assert.equal(brokenJson.severity, "error");
+
+  // 2. TSX / JSX syntax tests
+  const validTsx = validateFileSyntax(
+    "app/page.tsx",
+    `export default function Page() {
+      const items = [1, 2, 3];
+      return (
+        <main className="container">
+          {items.map((i) => <span key={i}>{i}</span>)}
+        </main>
+      );
+    }`
+  );
+  assert.equal(validTsx.isValid, true);
+
+  const unclosedBrace = validateFileSyntax(
+    "app/page.tsx",
+    `export default function Page() {
+      return <div>Hello</div>;`
+  );
+  assert.equal(unclosedBrace.isValid, false);
+  assert.match(unclosedBrace.message, /unclosed bracket/i);
+
+  const forbiddenNode = validateFileSyntax(
+    "app/page.tsx",
+    `import fs from "fs";
+    export default function Page() { return null; }`
+  );
+  assert.equal(forbiddenNode.isValid, false);
+  assert.match(forbiddenNode.message, /forbidden node\.js runtime/i);
+
+  // 3. Universal ZIP packaging and hot-patching roundtrip
+  const customEntries = [
+    { path: "app/page.tsx", content: "export default function Home() { return <h1>Patched!</h1>; }" },
+    { path: ".env.local", content: "CUSTOM_FLAG=true\n" },
+  ];
+
+  const archiveBuffer = createZip(customEntries);
+  assert.ok(archiveBuffer.byteLength > 0);
+
+  const unpacked = unpackStoredZip(archiveBuffer);
+  assert.equal(unpacked.length, 2);
+  const pageFile = unpacked.find((f) => f.path === "app/page.tsx");
+  assert.ok(pageFile);
+  assert.equal(pageFile.content, "export default function Home() { return <h1>Patched!</h1>; }");
+
+  const envFile = unpacked.find((f) => f.path === ".env.local");
+  assert.ok(envFile);
+  assert.equal(envFile.content, "CUSTOM_FLAG=true\n");
+});
+
+test("Automated test suite generator synthesizes route smoke tests, navigation suites, and CI testing workflows", () => {
+  const { generateTestSuite } = require("../lib/migration/test-scaffolder.ts");
+  const { scaffold } = require("../lib/migration/scaffold.ts");
+
+  // 1. Next.js multi-route test suite generation
+  const mockGeneratedFiles = [
+    { path: "app/page.tsx", content: "export default function HomePage() { return <h1>Home</h1>; }" },
+    { path: "app/dashboard/page.tsx", content: "export default function DashboardPage() { return <div>Dashboard</div>; }" },
+    { path: "components/Header.tsx", content: "export default function Header() { return <header>Navbar</header>; }" },
+    { path: "app/api/health/route.ts", content: 'export async function GET() { return Response.json({ status: "ok" }); }' },
+  ];
+
+  const nextTests = generateTestSuite("nextjs", mockGeneratedFiles);
+  const nextTestMap = new Map(nextTests.map((e) => [e.path, e.content]));
+
+  assert.ok(nextTestMap.has("vitest.config.ts"), "must include vitest.config.ts");
+  assert.ok(nextTestMap.has("vitest.setup.ts"), "must include vitest.setup.ts");
+  assert.ok(nextTestMap.has("__tests__/routes.test.tsx"), "must include __tests__/routes.test.tsx");
+  assert.ok(nextTestMap.has("__tests__/layout.test.tsx"), "must include __tests__/layout.test.tsx");
+  assert.ok(nextTestMap.has("__tests__/components.test.tsx"), "must include __tests__/components.test.tsx");
+  assert.ok(nextTestMap.has("__tests__/api.test.ts"), "must include __tests__/api.test.ts");
+
+  // Verify route test content mounts both pages
+  const routeTestContent = nextTestMap.get("__tests__/routes.test.tsx");
+  assert.match(routeTestContent, /import\s+PageRoute_0\s+from\s+"@\/app\/page"/);
+  assert.match(routeTestContent, /import\s+PageRoute_1\s+from\s+"@\/app\/dashboard\/page"/);
+  assert.match(routeTestContent, /renders\s+Home Route \(\/\)/);
+  assert.match(routeTestContent, /renders\s+Route \(\/dashboard\)/);
+
+  // Verify setup mocks navigation
+  const setupContent = nextTestMap.get("vitest.setup.ts");
+  assert.match(setupContent, /vi\.mock\("next\/navigation"/);
+  assert.match(setupContent, /window\.matchMedia/);
+  assert.match(setupContent, /ResizeObserver/);
+
+  // Verify component test
+  const compTestContent = nextTestMap.get("__tests__/components.test.tsx");
+  assert.match(compTestContent, /import\s+Header_0\s+from\s+"@\/components\/Header"/);
+
+  // Verify API contract test
+  const apiTestContent = nextTestMap.get("__tests__/api.test.ts");
+  assert.match(apiTestContent, /import \* as apiEndpoint_0 from "@\/app\/api\/health\/route"/);
+  assert.match(apiTestContent, /handles HTTP request for \/api\/health/);
+
+  // 2. Expo / React Native navigation test suite generation
+  const mockExpoFiles = [
+    { path: "app/index.tsx", content: "export default function Index() { return null; }" },
+    { path: "app/profile.tsx", content: "export default function Profile() { return null; }" },
+  ];
+
+  const expoTests = generateTestSuite("expo", mockExpoFiles);
+  const expoTestMap = new Map(expoTests.map((e) => [e.path, e.content]));
+
+  assert.ok(expoTestMap.has("jest.config.js"));
+  assert.ok(expoTestMap.has("jest.setup.js"));
+  assert.ok(expoTestMap.has("__tests__/navigation.test.tsx"));
+
+  const expoNavTest = expoTestMap.get("__tests__/navigation.test.tsx");
+  assert.match(expoNavTest, /import Screen_0 from "@\/app\/index"/);
+  assert.match(expoNavTest, /import Screen_1 from "@\/app\/profile"/);
+
+  const expoSetup = expoTestMap.get("jest.setup.js");
+  assert.match(expoSetup, /jest\.mock\("expo-router"/);
+  assert.match(expoSetup, /jest\.mock\("react-native-safe-area-context"/);
+
+  // 3. Integration with scaffold configuration
+  // Scaffold with test suite enabled (default)
+  const scaffoldedWithTests = scaffold("Summary", "Goal", "nextjs", { includeTestSuite: true }, mockGeneratedFiles);
+  const scaffoldMap = new Map(scaffoldedWithTests.map((e) => [e.path, e.content]));
+
+  assert.ok(scaffoldMap.has("vitest.config.ts"));
+  assert.ok(scaffoldMap.has("__tests__/routes.test.tsx"));
+
+  const pkgJson = JSON.parse(scaffoldMap.get("package.json"));
+  assert.equal(pkgJson.scripts.test, "vitest run");
+  assert.equal(pkgJson.scripts["test:watch"], "vitest");
+  assert.ok(pkgJson.devDependencies.vitest);
+  assert.ok(pkgJson.devDependencies.jsdom);
+
+  const ciYaml = scaffoldMap.get(".github/workflows/ci.yml");
+  assert.match(ciYaml, /Run automated test suite/);
+
+  const readme = scaffoldMap.get("README.md");
+  assert.match(readme, /## Automated test suite/);
+
+  // Scaffold with test suite disabled
+  const scaffoldedWithoutTests = scaffold("Summary", "Goal", "nextjs", { includeTestSuite: false }, mockGeneratedFiles);
+  const noTestMap = new Map(scaffoldedWithoutTests.map((e) => [e.path, e.content]));
+
+  assert.equal(noTestMap.has("vitest.config.ts"), false);
+  assert.equal(noTestMap.has("__tests__/routes.test.tsx"), false);
+
+  const noTestPkg = JSON.parse(noTestMap.get("package.json"));
+  assert.equal(noTestPkg.scripts.test, undefined);
+  assert.equal(noTestPkg.devDependencies.vitest, undefined);
+
+  const noTestCi = noTestMap.get(".github/workflows/ci.yml");
+  assert.doesNotMatch(noTestCi, /Run automated test suite/);
+});
+
+test("Standalone CLI runner executes headless code audit, feasibility evaluation, and autonomous scaffolding", async () => {
+  const {
+    readLocalSource,
+    runFeasibility,
+    runAudit,
+    runScaffold,
+    formatPrettyAudit,
+    formatPrettyFeasibility,
+    formatPrettyScaffold,
+  } = require("../lib/cli/cli-engine.ts");
+  const { parseArgs } = require("../bin/codemorph.cjs");
+
+  const fixtureDir = path.join(root, "fixtures", "migrations", "react-vite-multi-route", "source");
+
+  // 1. Test CLI argument parser
+  const parsed1 = parseArgs(["feasibility", "./my-app", "--target=expo", "--fail-under=85", "--format=json"]);
+  assert.equal(parsed1.command, "feasibility");
+  assert.equal(parsed1.targetPath, "./my-app");
+  assert.equal(parsed1.options.target, "expo");
+  assert.equal(parsed1.options.failUnder, 85);
+  assert.equal(parsed1.options.format, "json");
+
+  const parsed2 = parseArgs(["audit", "-o", "report.md", "--fail-on-critical", "--skip-dependencies"]);
+  assert.equal(parsed2.command, "audit");
+  assert.equal(parsed2.options.output, "report.md");
+  assert.equal(parsed2.options.failOnCritical, true);
+  assert.equal(parsed2.options.skipDependencies, true);
+
+  // 2. Test reading local source directory
+  const loaded = readLocalSource(fixtureDir);
+  assert.equal(loaded.isZip, false);
+  assert.equal(loaded.profile.framework, "React + Vite");
+  assert.equal(loaded.profile.sourceType, "react-vite");
+  assert.ok(loaded.files.length >= 5);
+  assert.ok(loaded.manifest.eligibleTextFileCount >= 4);
+
+  // 3. Test headless Feasibility evaluation & exit code thresholds
+  const feasPass = runFeasibility(fixtureDir, { target: "nextjs", failUnder: 70 });
+  assert.ok(feasPass.report.score >= 80);
+  assert.equal(feasPass.report.tier, "high");
+  assert.equal(feasPass.exitCode, 0);
+
+  const feasFail = runFeasibility(fixtureDir, { target: "nextjs", failUnder: 99 });
+  assert.equal(feasFail.exitCode, 1, "must return exitCode 1 when score is below failUnder threshold");
+
+  const prettyFeas = formatPrettyFeasibility(feasPass.report);
+  assert.match(prettyFeas, /CodeMorph AI Migration Feasibility Scorecard/);
+  assert.match(prettyFeas, /Overall Portability:/);
+
+  // 4. Test headless Audit engine execution
+  const auditRes = await runAudit(fixtureDir, { skipDependencies: true, failOnCritical: true });
+  assert.equal(auditRes.exitCode, 0);
+  assert.ok(auditRes.report.structure.parsedFiles >= 4);
+  assert.ok(auditRes.markdown.length > 50);
+
+  const prettyAudit = formatPrettyAudit(auditRes.report);
+  assert.match(prettyAudit, /CodeMorph AI Security & Code Audit/);
+  assert.match(prettyAudit, /Structural Architecture Metrics:/);
+
+  // 5. Test headless Scaffold engine execution
+  const scaffoldRes = runScaffold(fixtureDir, { target: "nextjs", packageManager: "pnpm" });
+  assert.equal(scaffoldRes.target, "nextjs");
+  assert.ok(scaffoldRes.filesCount >= 10);
+  assert.equal(scaffoldRes.exitCode, 0);
+
+  const scaffoldPaths = scaffoldRes.entries.map((e) => e.path);
+  assert.ok(scaffoldPaths.includes("package.json"));
+  assert.ok(scaffoldPaths.includes("vitest.config.ts"));
+  assert.ok(scaffoldPaths.includes("__tests__/routes.test.tsx"));
+
+  const prettyScaffold = formatPrettyScaffold(scaffoldRes);
+  assert.match(prettyScaffold, /CodeMorph AI Autonomous Scaffold Generator/);
+  assert.match(prettyScaffold, /Planned & Synthesized Architecture Files:/);
+});
+
+test("Multi-repository comparative benchmark engine computes side-by-side matrices, sequence roadmap, and executive dossiers", () => {
+  const {
+    analyzeBenchmarkProject,
+    compareBenchmarkProjects,
+    generateComparativeDossier,
+    calculateEngineeringEffort,
+  } = require("../lib/benchmark/benchmark-engine.ts");
+
+  // 1. Test engineering effort formula
+  const effort = calculateEngineeringEffort({
+    fileCount: 10,
+    feasibilityScore: 90,
+    findingsCount: { critical: 0, high: 0, medium: 1 },
+    syntaxErrors: 0,
+    routeCount: 4,
+    refactorPackages: 1,
+  });
+  assert.ok(effort.manualHours > 0);
+  assert.ok(effort.autonomousMinutes > 0);
+  assert.equal(effort.savingsDollars, effort.manualHours * 85);
+
+  // 2. Test mock project inputs
+  const projectA = {
+    id: "proj_a",
+    name: "Modern React SPA",
+    target: "nextjs",
+    files: [
+      {
+        path: "package.json",
+        content: JSON.stringify({
+          name: "app-a",
+          dependencies: { react: "19.0.0", "react-dom": "19.0.0" },
+          devDependencies: { vite: "6.0.0" },
+        }),
+      },
+      { path: "index.html", content: "<html><body><div id='root'></div></body></html>" },
+      { path: "src/main.tsx", content: "import React from 'react'; export default function App() { return <div>App</div>; }" },
+    ],
+  };
+
+  const projectB = {
+    id: "proj_b",
+    name: "Static Documentation",
+    target: "nextjs",
+    files: [
+      { path: "index.html", content: "<html><body><h1>Docs</h1></body></html>" },
+      { path: "guide.html", content: "<html><body><h1>Guide</h1></body></html>" },
+      { path: "style.css", content: "body { margin: 0; }" },
+    ],
+  };
+
+  const projectC = {
+    id: "proj_c",
+    name: "Legacy Backend Service",
+    target: "nextjs",
+    files: [
+      {
+        path: "package.json",
+        content: JSON.stringify({
+          name: "backend-api",
+          dependencies: { express: "4.18.0" },
+        }),
+      },
+      { path: "server.js", content: "const express = require('express');" },
+    ],
+  };
+
+  // 3. Test single project analysis
+  const analyzedA = analyzeBenchmarkProject(projectA);
+  assert.equal(analyzedA.id, "proj_a");
+  assert.equal(analyzedA.framework, "React + Vite");
+  assert.ok(analyzedA.feasibilityScore >= 80);
+  assert.equal(analyzedA.feasibilityTier, "high");
+
+  const analyzedC = analyzeBenchmarkProject(projectC);
+  assert.equal(analyzedC.feasibilityTier, "incompatible");
+  assert.equal(analyzedC.feasibilityScore, 0);
+
+  // 4. Test multi-project comparative benchmark
+  const comparison = compareBenchmarkProjects([projectA, projectB, projectC]);
+  assert.equal(comparison.projectCount, 3);
+  assert.ok(comparison.portfolioTotals.totalFiles >= 8);
+  assert.ok(comparison.portfolioTotals.totalEstimatedSavingsDollars > 0);
+
+  // Verify rankings
+  assert.ok(comparison.rankings.highestPortability);
+  assert.ok(comparison.rankings.lowestRisk);
+  assert.equal(comparison.rankings.recommendedSequence.length, 3);
+
+  // Sequence priorities P1, P2, P3
+  assert.equal(comparison.rankings.recommendedSequence[0].priority, "P1");
+  assert.equal(comparison.rankings.recommendedSequence[1].priority, "P2");
+  assert.equal(comparison.rankings.recommendedSequence[2].priority, "P3");
+
+  // Incompatible project C should be prioritized last
+  assert.equal(comparison.rankings.recommendedSequence[2].projectId, "proj_c");
+
+  // 5. Boundary constraints (< 2 and > 4 projects)
+  assert.throws(() => compareBenchmarkProjects([projectA]), /at least 2 projects/);
+  assert.throws(() => compareBenchmarkProjects([projectA, projectB, projectC, projectA, projectB]), /capped at 4 projects/);
+
+  // 6. Executive markdown dossier generation
+  const dossier = generateComparativeDossier(comparison);
+  assert.match(dossier, /CODEMORPH AI — COMPARATIVE PORTFOLIO BENCHMARK DOSSIER/);
+  assert.match(dossier, /Executive Portfolio Overview/);
+  assert.match(dossier, /Side-by-Side Comparative Matrix/);
+  assert.match(dossier, /Recommended Migration Sequence & Execution Roadmap/);
+  assert.match(dossier, /\[P1\]/);
+  assert.match(dossier, /Modern React SPA/);
+});
+
+test("Deterministic AST codemod engine transforms React Router, injects client directives, optimizes images, and ports web elements to Expo", () => {
+  const {
+    transformReactRouterToNext,
+    transformInjectClientDirective,
+    transformLegacyImgToNextImage,
+    transformWebToExpoPrimitives,
+    detectApplicableCodemods,
+  } = require("../lib/codemods/engine.ts");
+
+  // 1. React Router to Next.js Codemod
+  const reactRouterInput = `import React from "react";
+import { useNavigate, useParams, Link } from "react-router-dom";
+
+export function Profile() {
+  const navigate = useNavigate();
+  const { id } = useParams();
+
+  return (
+    <div>
+      <Link to="/settings">Go to settings</Link>
+      <button onClick={() => navigate("/dashboard")}>Dashboard</button>
+    </div>
+  );
+}`;
+
+  const routerResult = transformReactRouterToNext(reactRouterInput);
+  assert.equal(routerResult.changed, true);
+  assert.doesNotMatch(routerResult.code, /react-router-dom/);
+  assert.match(routerResult.code, /import Link from "next\/link"/);
+  assert.match(routerResult.code, /import \{ useParams, useRouter \} from "next\/navigation"/);
+  assert.match(routerResult.code, /const router = useRouter\(\)/);
+  assert.match(routerResult.code, /router\.push\("\/dashboard"\)/);
+  assert.match(routerResult.code, /<Link href="\/settings">/);
+
+  // 2. Client Directive Injection Codemod
+  const hookComponent = `import React, { useState } from "react";
+
+export function Counter() {
+  const [count, setCount] = useState(0);
+  return <button onClick={() => setCount(count + 1)}>{count}</button>;
+}`;
+
+  const clientResult = transformInjectClientDirective(hookComponent);
+  assert.equal(clientResult.changed, true);
+  assert.match(clientResult.code, /^"use client";\r?\n/);
+
+  // When already present, should not duplicate
+  const alreadyClient = `"use client";\n${hookComponent}`;
+  const noopClient = transformInjectClientDirective(alreadyClient);
+  assert.equal(noopClient.changed, false);
+  assert.equal(noopClient.code, alreadyClient);
+
+  // Pure server component without client APIs should remain untouched
+  const serverComponent = `export default function Page() { return <h1>Static Header</h1>; }`;
+  const noopServer = transformInjectClientDirective(serverComponent);
+  assert.equal(noopServer.changed, false);
+
+  // 3. Legacy <img> to Next.js <Image /> Codemod
+  const imgInput = `export function Banner() {
+  return <img src="/hero.png" className="banner" />;
+}`;
+
+  const imgResult = transformLegacyImgToNextImage(imgInput);
+  assert.equal(imgResult.changed, true);
+  assert.match(imgResult.code, /import Image from "next\/image"/);
+  assert.match(imgResult.code, /<Image src="\/hero\.png" className="banner" alt="" width=\{600\} height=\{400\} \/>/);
+
+  // 4. Web Elements to Expo / React Native Primitives
+  const webInput = `export function Card({ title, onClick }) {
+  return (
+    <div>
+      <p>{title}</p>
+      <button onClick={onClick}><span>Action</span></button>
+    </div>
+  );
+}`;
+
+  const expoResult = transformWebToExpoPrimitives(webInput);
+  assert.equal(expoResult.changed, true);
+  assert.match(expoResult.code, /import \{ Text, TouchableOpacity, View \} from "react-native"/);
+  assert.match(expoResult.code, /<View>/);
+  assert.match(expoResult.code, /<Text>\{title\}<\/Text>/);
+  assert.match(expoResult.code, /<TouchableOpacity onPress=\{onClick\}>/);
+
+  // 5. Detect applicable codemods
+  const detectedNext = detectApplicableCodemods("src/App.tsx", reactRouterInput, "nextjs");
+  const actionIds = detectedNext.map((a) => a.id);
+  assert.ok(actionIds.includes("react-router"));
+  assert.ok(actionIds.includes("use-client"));
+
+  const detectedExpo = detectApplicableCodemods("app/card.tsx", webInput, "expo");
+  assert.ok(detectedExpo.some((a) => a.id === "expo-primitives"));
+});
+
+test("In-browser simulated device and component previewer synthesizes sandboxed web and mobile HTML viewports", () => {
+  const {
+    extractJsxMarkup,
+    convertJsxToHtml,
+    generateWebPreviewHtml,
+    generateMobilePreviewHtml,
+  } = require("../lib/preview/simulator.ts");
+
+  // 1. Test JSX extraction
+  const componentCode = `export default function Dashboard() {
+    const title = "Analytics";
+    return (
+      <main className="dashboard-container">
+        <h1>{title}</h1>
+        <p>Active Users</p>
+      </main>
+    );
+  }`;
+
+  const extracted = extractJsxMarkup(componentCode);
+  assert.match(extracted, /<main className="dashboard-container">/);
+  assert.match(extracted, /<\/main>/);
+
+  // 2. Test JSX to HTML conversion
+  const converted = convertJsxToHtml(extracted);
+  assert.match(converted, /class="dashboard-container"/);
+  assert.match(converted, /<span class="jsx-var">title<\/span>/);
+  assert.doesNotMatch(converted, /className=/);
+
+  // 3. Test Web Preview HTML generation with CSS injection
+  const activeEntry = {
+    path: "app/page.tsx",
+    content: componentCode,
+  };
+  const allEntries = [
+    activeEntry,
+    {
+      path: "app/globals.css",
+      content: ".dashboard-container { background: #111; color: #fff; }",
+    },
+  ];
+
+  const webDoc = generateWebPreviewHtml(activeEntry, allEntries);
+  assert.match(webDoc, /<!DOCTYPE html>/);
+  assert.match(webDoc, /\.dashboard-container\s*\{\s*background:\s*#111;/);
+  assert.match(webDoc, /class="dashboard-container"/);
+
+  // 4. Test Mobile Expo Simulation HTML generation
+  const mobileEntry = {
+    path: "app/index.tsx",
+    content: `export default function HomeScreen() {
+      return (
+        <SafeAreaView>
+          <View className="hero">
+            <Text>Welcome to Mobile</Text>
+            <TouchableOpacity onPress={() => {}}>
+              <Text>Get Started</Text>
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
+      );
+    }`,
+  };
+
+  const mobileDoc = generateMobilePreviewHtml(mobileEntry, [mobileEntry]);
+  assert.match(mobileDoc, /class="rn-safe-area"/);
+  assert.match(mobileDoc, /class="rn-view"/);
+  assert.match(mobileDoc, /class="rn-text"/);
+  assert.match(mobileDoc, /class="rn-touchable"/);
+  assert.match(mobileDoc, /Welcome to Mobile/);
+});

@@ -3,12 +3,15 @@ import type { MigrationTarget } from "./plan";
 import type { ValidationResult } from "./validation";
 import type { ZipEntry } from "./zip";
 import type { FeasibilityReport } from "@/lib/analysis/feasibility";
+import { generateTestSuite } from "./test-scaffolder";
 
 export interface ScaffoldConfig {
   styling?: "tailwind" | "css-modules" | "standard-css" | "nativewind";
   strictTypeScript?: boolean;
   includeCiWorkflow?: boolean;
   includeDockerfile?: boolean;
+  includeTestSuite?: boolean;
+  testFramework?: "vitest" | "jest";
   renderingMode?: "server-components" | "client-components";
   packageManager?: "npm" | "pnpm" | "yarn" | "bun";
 }
@@ -18,6 +21,8 @@ export const DEFAULT_SCAFFOLD_CONFIG: ScaffoldConfig = {
   strictTypeScript: true,
   includeCiWorkflow: true,
   includeDockerfile: true,
+  includeTestSuite: true,
+  testFramework: "vitest",
   renderingMode: "server-components",
   packageManager: "npm",
 };
@@ -26,7 +31,8 @@ export function scaffold(
   summary: string,
   goal: string,
   target: MigrationTarget = "nextjs",
-  config?: Partial<ScaffoldConfig>
+  config?: Partial<ScaffoldConfig>,
+  generatedFiles: GeneratedFile[] = []
 ): ZipEntry[] {
   const resolvedConfig: ScaffoldConfig = {
     ...DEFAULT_SCAFFOLD_CONFIG,
@@ -46,6 +52,7 @@ export function scaffold(
         android: "expo start --android",
         ios: "expo start --ios",
         web: "expo start --web",
+        ...(resolvedConfig.includeTestSuite !== false ? { test: "jest" } : {}),
       },
       dependencies: {
         expo: "~52.0.0",
@@ -63,6 +70,9 @@ export function scaffold(
         "@types/react": "~18.3.12",
         typescript: "^5.3.3",
         ...(isNativeWind ? { tailwindcss: "^3.4.0" } : {}),
+        ...(resolvedConfig.includeTestSuite !== false
+          ? { jest: "^29.7.0", "jest-expo": "~52.0.0" }
+          : {}),
       },
     };
 
@@ -119,6 +129,8 @@ export function scaffold(
       pm === "pnpm" ? "pnpm dlx expo" : pm === "yarn" ? "yarn expo" : pm === "bun" ? "bunx expo" : "npx expo";
     const installCmd =
       pm === "pnpm" ? "pnpm install" : pm === "yarn" ? "yarn install" : pm === "bun" ? "bun install" : "npm install";
+    const testCmd =
+      pm === "pnpm" ? "pnpm test" : pm === "yarn" ? "yarn test" : pm === "bun" ? "bun test" : "npm test";
 
     const readme = [
       "# Migrated Expo mobile application",
@@ -134,6 +146,16 @@ export function scaffold(
       "",
       "Scan the QR code with a matching Expo Go version on your device, or press `a` for Android Emulator, `i` for iOS Simulator, or `w` for Web. For production or custom native modules, run `npx expo prebuild` and `npx expo run:android` / `npx expo run:ios`.",
       "",
+      ...(resolvedConfig.includeTestSuite !== false
+        ? [
+            "## Automated test suite",
+            "",
+            "```bash",
+            testCmd,
+            "```",
+            "",
+          ]
+        : []),
       "## Requested outcome",
       "",
       goal,
@@ -150,6 +172,14 @@ export function scaffold(
       { path: "app/_layout.tsx", content: rootLayout },
       { path: "README.md", content: readme },
     ];
+
+    if (resolvedConfig.includeTestSuite !== false) {
+      const testEntries = generateTestSuite("expo", generatedFiles, {
+        framework: "jest",
+        packageManager: pm,
+      });
+      entries.push(...testEntries);
+    }
 
     if (isNativeWind) {
       entries.push({
@@ -187,6 +217,13 @@ export function scaffold(
         "      - name: Typecheck TypeScript",
         "        run: npx tsc --noEmit",
         "",
+        ...(resolvedConfig.includeTestSuite !== false
+          ? [
+              "      - name: Run automated test suite",
+              `        run: ${testCmd}`,
+              "",
+            ]
+          : []),
       ].join("\n");
       entries.push({ path: ".github/workflows/ci.yml", content: ciYaml });
     }
@@ -228,7 +265,14 @@ export function scaffold(
     name: "codemorph-migrated-site",
     version: "0.1.0",
     private: true,
-    scripts: { dev: "next dev", build: "next build", start: "next start" },
+    scripts: {
+      dev: "next dev",
+      build: "next build",
+      start: "next start",
+      ...(resolvedConfig.includeTestSuite !== false
+        ? { test: "vitest run", "test:watch": "vitest" }
+        : {}),
+    },
     dependencies: { next: "16.4.3", react: "19.3.0", "react-dom": "19.3.0" },
     devDependencies: {
       "@types/node": "^20",
@@ -236,6 +280,15 @@ export function scaffold(
       "@types/react-dom": "^19",
       typescript: "^5",
       ...(isTailwind ? { tailwindcss: "^4", "@tailwindcss/postcss": "^4" } : {}),
+      ...(resolvedConfig.includeTestSuite !== false
+        ? {
+            vitest: "^3.0.0",
+            "@vitejs/plugin-react": "^4.3.0",
+            jsdom: "^26.0.0",
+            "@testing-library/react": "^16.0.0",
+            "@testing-library/jest-dom": "^6.6.0",
+          }
+        : {}),
     },
   };
 
@@ -299,6 +352,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     pm === "pnpm" ? "pnpm install" : pm === "yarn" ? "yarn install" : pm === "bun" ? "bun install" : "npm install";
   const devCmd =
     pm === "pnpm" ? "pnpm dev" : pm === "yarn" ? "yarn dev" : pm === "bun" ? "bun run dev" : "npm run dev";
+  const testCmd =
+    pm === "pnpm" ? "pnpm test" : pm === "yarn" ? "yarn test" : pm === "bun" ? "bun test" : "npm test";
 
   const readme = [
     "# Migrated website",
@@ -312,6 +367,16 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     devCmd,
     "```",
     "",
+    ...(resolvedConfig.includeTestSuite !== false
+      ? [
+          "## Automated test suite",
+          "",
+          "```bash",
+          testCmd,
+          "```",
+          "",
+        ]
+      : []),
     "## Requested outcome",
     "",
     goal,
@@ -328,6 +393,14 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     { path: "app/layout.tsx", content: rootLayout },
     { path: "README.md", content: readme },
   ];
+
+  if (resolvedConfig.includeTestSuite !== false) {
+    const testEntries = generateTestSuite("nextjs", generatedFiles, {
+      framework: resolvedConfig.testFramework ?? "vitest",
+      packageManager: pm,
+    });
+    entries.push(...testEntries);
+  }
 
   if (resolvedConfig.includeCiWorkflow) {
     const ciYaml = [
@@ -358,6 +431,13 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       "      - name: Build Next.js application",
       "        run: npm run build",
       "",
+      ...(resolvedConfig.includeTestSuite !== false
+        ? [
+            "      - name: Run automated test suite",
+            `        run: ${testCmd}`,
+            "",
+          ]
+        : []),
     ].join("\n");
     entries.push({ path: ".github/workflows/ci.yml", content: ciYaml });
   }
@@ -444,7 +524,7 @@ export function migrationReport(input: {
   const readiness = input.validation.status === "passed" ? "VERIFIED" : "UNVERIFIED — isolated build and route checks did not run.";
 
   const scaffoldSection = input.scaffoldConfig
-    ? `\n## Scaffold Configuration\n\n- Styling Strategy: ${input.scaffoldConfig.styling ?? "tailwind"}\n- TypeScript Compiler: ${input.scaffoldConfig.strictTypeScript !== false ? "Strict Mode (strict: true)" : "Permissive Mode"}\n- CI/CD Automation: ${input.scaffoldConfig.includeCiWorkflow !== false ? "Enabled (.github/workflows/ci.yml)" : "Omitted"}\n- Containerization: ${input.scaffoldConfig.includeDockerfile !== false ? (isExpo ? "EAS Build Profile (eas.json)" : "Production Dockerfile") : "Omitted"}\n- Package Manager: ${input.scaffoldConfig.packageManager ?? "npm"}\n- Rendering Preference: ${input.scaffoldConfig.renderingMode ?? "server-components"}\n`
+    ? `\n## Scaffold Configuration\n\n- Styling Strategy: ${input.scaffoldConfig.styling ?? "tailwind"}\n- TypeScript Compiler: ${input.scaffoldConfig.strictTypeScript !== false ? "Strict Mode (strict: true)" : "Permissive Mode"}\n- Automated Test Suite: ${input.scaffoldConfig.includeTestSuite !== false ? `Enabled (${isExpo ? "Jest + React Native Smoke Tests" : "Vitest + React Testing Library"})` : "Omitted"}\n- CI/CD Automation: ${input.scaffoldConfig.includeCiWorkflow !== false ? "Enabled (.github/workflows/ci.yml)" : "Omitted"}\n- Containerization: ${input.scaffoldConfig.includeDockerfile !== false ? (isExpo ? "EAS Build Profile (eas.json)" : "Production Dockerfile") : "Omitted"}\n- Package Manager: ${input.scaffoldConfig.packageManager ?? "npm"}\n- Rendering Preference: ${input.scaffoldConfig.renderingMode ?? "server-components"}\n`
     : "";
 
   const feasibilitySection = input.feasibility
