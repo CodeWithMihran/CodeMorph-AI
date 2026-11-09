@@ -150,7 +150,7 @@ function parseArgs(args) {
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
-  const migrationFixtures = ["static-landing", "react-vite-multi-route", "unsupported-backend"].map(evaluateStaticFixture);
+  const migrationFixtures = ["static-landing", "react-vite-multi-route", "enterprise-hybrid-dashboard", "unsupported-backend"].map(evaluateStaticFixture);
   const workerFixtures = [];
   if (!options.staticOnly) {
     const validationFixtureRoot = path.join(root, "fixtures", "validation");
@@ -159,6 +159,7 @@ async function main() {
       ["worker-invalid-source", path.join(validationFixtureRoot, "invalid-source"), "failed", "failed", ["/"]],
       ["migration-static-landing", path.join(root, "fixtures", "migrations", "static-landing", "target"), "passed", "passed", ["/"]],
       ["migration-react-vite-multi-route", path.join(root, "fixtures", "migrations", "react-vite-multi-route", "target"), "passed", "passed", ["/", "/about"]],
+      ["migration-enterprise-hybrid-dashboard", path.join(root, "fixtures", "migrations", "enterprise-hybrid-dashboard", "target"), "passed", "passed", ["/", "/analytics", "/dashboard"]],
     ];
     for (const [name, directory, expectedStatus, expectedBuild, routes] of cases) workerFixtures.push(await evaluateWorkerFixture(name, directory, expectedStatus, expectedBuild, routes));
   }

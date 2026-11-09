@@ -1,0 +1,26 @@
+{
+  "name": "enterprise-hybrid-dashboard",
+  "sourceType": "react-vite",
+  "framework": "React + Vite",
+  "repository": "fixture/enterprise-hybrid-dashboard",
+  "goal": "Migrate enterprise dashboard with multi-tier routing, executive KPI overview, and telemetry analytics.",
+  "keyFiles": [
+    "package.json",
+    "src/main.tsx",
+    "src/App.tsx",
+    "src/pages/Home.tsx",
+    "src/pages/Dashboard.tsx",
+    "src/pages/Analytics.tsx"
+  ],
+  "routeCandidates": [
+    "src/pages/Home.tsx",
+    "src/pages/Dashboard.tsx",
+    "src/pages/Analytics.tsx"
+  ],
+  "expectedRoutes": ["/", "/analytics", "/dashboard"],
+  "targetAssertions": [
+    { "file": "app/page.tsx", "includes": "Enterprise Operations Platform" },
+    { "file": "app/dashboard/page.tsx", "includes": "Executive KPI Overview" },
+    { "file": "app/analytics/page.tsx", "includes": "Real-time Telemetry Stream" }
+  ]
+}
