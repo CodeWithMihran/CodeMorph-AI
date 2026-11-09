@@ -15,6 +15,7 @@ import {
 import { SimulatedDevicePreview } from "./SimulatedDevicePreview";
 import { CheckpointTimelineModal } from "./CheckpointTimelineModal";
 import { SimulatedDevTerminal } from "./SimulatedDevTerminal";
+import { ArchitectureGraphModal } from "./ArchitectureGraphModal";
 
 interface SourceManifest {
   framework: string;
@@ -85,6 +86,7 @@ export function CodeInspectorView({
   const [newFileError, setNewFileError] = useState("");
   const [historyModalOpen, setHistoryModalOpen] = useState(false);
   const [terminalOpen, setTerminalOpen] = useState(false);
+  const [architectureModalOpen, setArchitectureModalOpen] = useState(false);
 
   // Checkpoint History Time-Machine state
   const [checkpointHistory, setCheckpointHistory] = useState<CheckpointHistory>(() =>
@@ -482,6 +484,15 @@ export function CodeInspectorView({
         </div>
 
         <div className="inspector-header-actions">
+          <button
+            type="button"
+            className="action-btn secondary architecture-btn"
+            onClick={() => setArchitectureModalOpen(true)}
+            title="Open Interactive Architecture & Dependency Graph"
+          >
+            🧬 Architecture
+          </button>
+
           <button
             type="button"
             className={`action-btn secondary terminal-toggle-btn ${terminalOpen ? "is-active" : ""}`}
@@ -1019,6 +1030,14 @@ export function CodeInspectorView({
         onClose={() => setHistoryModalOpen(false)}
         history={checkpointHistory}
         onRestoreCheckpoint={handleRestoreCheckpoint}
+      />
+
+      {/* Interactive Architecture & Dependency Graph Modal */}
+      <ArchitectureGraphModal
+        isOpen={architectureModalOpen}
+        onClose={() => setArchitectureModalOpen(false)}
+        entries={projectEntries}
+        title={`Architecture & Dependency Graph (${targetName})`}
       />
     </div>
   );

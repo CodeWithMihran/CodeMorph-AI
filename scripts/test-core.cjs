@@ -2622,3 +2622,96 @@ export default function Counter() {
   assert.ok(liveLogs.length >= 3);
   assert.ok(liveLogs.some((l) => l.includes("GET / 200")));
 });
+
+test("Architecture graph engine builds topological node-link networks, identifies circular cycles, and computes coupling metrics", () => {
+  const {
+    classifyNodeKind,
+    extractImportSpecifiers,
+    findCircularCycles,
+    buildArchitectureGraph,
+  } = require("../lib/graph/architecture-graph.ts");
+
+  // 1. Classification checks
+  assert.equal(classifyNodeKind("app/page.tsx"), "route");
+  assert.equal(classifyNodeKind("components/Header.tsx"), "component");
+  assert.equal(classifyNodeKind("hooks/useAuth.ts"), "state_hook");
+  assert.equal(classifyNodeKind("lib/utils.ts"), "utility");
+  assert.equal(classifyNodeKind("app/globals.css"), "style");
+  assert.equal(classifyNodeKind("react"), "package");
+
+  // 2. Extract import specifiers check
+  const snippet = `
+    import React, { useState } from "react";
+    import { Header } from "./components/Header";
+    import "@/styles/theme.css";
+    export * from "./types";
+    const asyncMod = await import("lucide-react");
+  `;
+  const specs = extractImportSpecifiers(snippet);
+  assert.ok(specs.includes("react"));
+  assert.ok(specs.includes("./components/Header"));
+  assert.ok(specs.includes("@/styles/theme.css"));
+  assert.ok(specs.includes("./types"));
+  assert.ok(specs.includes("lucide-react"));
+
+  // 3. Circular cycle detection check
+  const cyclicMap = new Map([
+    ["A", new Set(["B"])],
+    ["B", new Set(["C"])],
+    ["C", new Set(["A"])],
+    ["D", new Set(["A"])],
+  ]);
+  const cycleRes = findCircularCycles(cyclicMap);
+  assert.ok(cycleRes.cycles.length > 0);
+  assert.ok(cycleRes.circularNodeIds.has("A"));
+  assert.ok(cycleRes.circularNodeIds.has("B"));
+  assert.ok(cycleRes.circularNodeIds.has("C"));
+  assert.equal(cycleRes.circularNodeIds.has("D"), false); // D points in, but is not in cycle
+
+  // 4. Complete Architecture Graph construction check
+  const projectEntries = [
+    {
+      path: "app/page.tsx",
+      content: `import { Header } from "./components/Header";\nimport { useAuth } from "./hooks/useAuth";\nexport default function Page() { return null; }`,
+    },
+    {
+      path: "app/components/Header.tsx",
+      content: `import React from "react";\nimport { formatName } from "../lib/utils";\nexport function Header() { return null; }`,
+    },
+    {
+      path: "app/hooks/useAuth.ts",
+      content: `import { useState } from "react";\nexport function useAuth() { return useState(null); }`,
+    },
+    {
+      path: "app/lib/utils.ts",
+      content: `export function formatName(s: string) { return s.trim(); }`,
+    },
+    {
+      path: "app/globals.css",
+      content: `body { margin: 0; }`,
+    },
+  ];
+
+  const graph = buildArchitectureGraph(projectEntries, true);
+  assert.ok(graph.nodes.length >= 5);
+  assert.ok(graph.edges.length >= 4);
+
+  // Check route node metrics
+  const pageNode = graph.nodes.find((n) => n.id === "app/page.tsx");
+  assert.ok(pageNode);
+  assert.equal(pageNode.kind, "route");
+  assert.ok(pageNode.fanOut >= 2); // imports Header and useAuth
+
+  // Check utility node metrics (utils.ts has fanIn from Header.tsx)
+  const utilNode = graph.nodes.find((n) => n.id === "app/lib/utils.ts");
+  assert.ok(utilNode);
+  assert.equal(utilNode.kind, "utility");
+  assert.ok(utilNode.fanIn >= 1);
+
+  // Verify coordinates generated for 2D canvas
+  assert.ok(pageNode.x >= 0 && pageNode.y >= 0);
+  assert.ok(utilNode.x >= 0 && utilNode.y >= 0);
+  assert.ok(graph.metrics.routesCount >= 1);
+  assert.ok(graph.metrics.componentsCount >= 1);
+  assert.equal(graph.metrics.circularCycleCount, 0); // Clean project has 0 cycles
+});
