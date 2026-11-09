@@ -29,6 +29,8 @@ function getTriggerBadge(trigger: CheckpointTrigger): { label: string; icon: str
       return { label: "Scaffold Config", icon: "🛠️", className: "badge-scaffold" };
     case "test_scaffold":
       return { label: "Test Suite", icon: "🧪", className: "badge-test" };
+    case "procedural_rules":
+      return { label: "Procedural Rules", icon: "⚡", className: "badge-codemod" };
     case "rollback":
       return { label: "Revert / Rollback", icon: "⏪", className: "badge-rollback" };
     default:

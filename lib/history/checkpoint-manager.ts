@@ -7,6 +7,7 @@ export type CheckpointTrigger =
   | "manual_edit"
   | "scaffold"
   | "test_scaffold"
+  | "procedural_rules"
   | "rollback";
 
 export interface CheckpointMeta {

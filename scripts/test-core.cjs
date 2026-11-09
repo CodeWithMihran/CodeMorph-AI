@@ -3052,3 +3052,101 @@ export default function Page() {
   assert.equal(expoSuite.passedCount, expoSuite.totalTests);
   assert.equal(expoSuite.passRate, 100);
 });
+
+test("Procedural memory rule enforcer scans project entries, previews diffs, executes sequential batch repairs, and captures rollback checkpoints", () => {
+  const { DEFAULT_STUDIO_RULES } = require("../lib/memory/rule-studio.ts");
+  const {
+    scanProjectForProceduralRules,
+    applyBatchRules,
+  } = require("../lib/memory/rule-enforcer.ts");
+  const {
+    initCheckpointHistory,
+    createCheckpoint,
+  } = require("../lib/history/checkpoint-manager.ts");
+
+  // Sample project files containing legacy patterns
+  const sampleEntries = [
+    {
+      path: "app/page.tsx",
+      content: `import React from "react";
+import { Link } from "react-router-dom";
+
+export default function Home() {
+  return (
+    <div>
+      <img src="/logo.png" alt="Logo" />
+      <Link to="/about">About Us</Link>
+    </div>
+  );
+}`,
+    },
+    {
+      path: "app/about/page.tsx",
+      content: `import React from "react";
+import { Link } from "react-router-dom";
+
+export default function About() {
+  return <Link to="/">Back to Home</Link>;
+}`,
+    },
+    {
+      path: "app/clean/page.tsx",
+      content: `export default function Clean() { return <h1>Already modern</h1>; }`,
+    },
+  ];
+
+  // 1. Scan project entries for procedural rules
+  const plan = scanProjectForProceduralRules(sampleEntries, DEFAULT_STUDIO_RULES);
+  assert.ok(plan.totalMatches >= 3);
+  assert.equal(plan.affectedFilesCount, 2); // app/page.tsx and app/about/page.tsx
+  assert.ok(plan.matches.length >= 3);
+
+  // Verify app/page.tsx matches React Router Link and Image rules
+  const pageMatches = plan.matches.filter((m) => m.filePath === "app/page.tsx");
+  assert.ok(pageMatches.some((m) => m.ruleId === "rule-react-router-link-to-next"));
+  assert.ok(pageMatches.some((m) => m.ruleId === "rule-legacy-img-to-next-image"));
+
+  // Verify summaries
+  assert.ok(plan.summaryByRule.some((s) => s.ruleId === "rule-react-router-link-to-next"));
+  const linkSummary = plan.summaryByRule.find((s) => s.ruleId === "rule-react-router-link-to-next");
+  assert.equal(linkSummary.affectedFiles.length, 2);
+
+  // 2. Selective application (deselect Image rule on app/page.tsx)
+  const modifiedSelection = plan.matches.map((m) => {
+    if (m.ruleId === "rule-legacy-img-to-next-image") {
+      return { ...m, selected: false }; // User unchecks Image rule
+    }
+    return { ...m, selected: true };
+  });
+
+  const applied = applyBatchRules(sampleEntries, modifiedSelection, DEFAULT_STUDIO_RULES);
+  assert.equal(applied.modifiedFilesCount, 2);
+  assert.ok(applied.totalFixesApplied >= 2);
+
+  const updatedPage = applied.updatedEntries.find((e) => e.path === "app/page.tsx");
+  assert.match(updatedPage.content, /import Link from "next\/link"/);
+  assert.match(updatedPage.content, /<Link href="\/about">/);
+  // Image rule was unchecked, so <img> tag should remain untouched
+  assert.match(updatedPage.content, /<img src="\/logo\.png"/);
+
+  const updatedAbout = applied.updatedEntries.find((e) => e.path === "app/about/page.tsx");
+  assert.match(updatedAbout.content, /import Link from "next\/link"/);
+  assert.match(updatedAbout.content, /<Link href="\/"/);
+
+  // Clean file was untouched
+  const updatedClean = applied.updatedEntries.find((e) => e.path === "app/clean/page.tsx");
+  assert.equal(updatedClean.content, sampleEntries[2].content);
+
+  // 3. Integration with Checkpoint Time-Machine
+  const initialHistory = initCheckpointHistory(sampleEntries, "Baseline Scaffolding", 20);
+  const updatedHistory = createCheckpoint(
+    initialHistory,
+    "Applied Procedural Rules (2 files)",
+    "procedural_rules",
+    applied.updatedEntries
+  );
+
+  assert.equal(updatedHistory.checkpoints.length, 2);
+  assert.equal(updatedHistory.checkpoints[1].triggerType, "procedural_rules");
+  assert.equal(updatedHistory.checkpoints[1].meta.modifiedFiles.length, 2);
+});

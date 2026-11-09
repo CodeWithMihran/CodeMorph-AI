@@ -17,6 +17,7 @@ import { CheckpointTimelineModal } from "./CheckpointTimelineModal";
 import { SimulatedDevTerminal, type TerminalTab } from "./SimulatedDevTerminal";
 import { ArchitectureGraphModal } from "./ArchitectureGraphModal";
 import { DeploymentLaunchModal } from "./DeploymentLaunchModal";
+import { ProceduralRulesEnforcementModal } from "./ProceduralRulesEnforcementModal";
 
 interface SourceManifest {
   framework: string;
@@ -90,6 +91,7 @@ export function CodeInspectorView({
   const [terminalInitialTab, setTerminalInitialTab] = useState<TerminalTab>("build");
   const [architectureModalOpen, setArchitectureModalOpen] = useState(false);
   const [deployModalOpen, setDeployModalOpen] = useState(false);
+  const [rulesModalOpen, setRulesModalOpen] = useState(false);
 
   // Checkpoint History Time-Machine state
   const [checkpointHistory, setCheckpointHistory] = useState<CheckpointHistory>(() =>
@@ -206,6 +208,19 @@ export function CodeInspectorView({
         onUpdateEntries(updated);
       }
     }
+  };
+
+  const handleApplyProceduralRules = (updatedEntries: ZipEntry[], summaryLabel: string) => {
+    setProjectEntries(updatedEntries);
+    setDraftContents({});
+    setCheckpointHistory((prev) =>
+      createCheckpoint(prev, summaryLabel, "procedural_rules", updatedEntries)
+    );
+    if (onUpdateEntries) {
+      onUpdateEntries(updatedEntries);
+    }
+    setSaveToast(true);
+    setTimeout(() => setSaveToast(false), 2500);
   };
 
   const diffSummary: DiffSummary | null = useMemo(() => {
@@ -506,6 +521,15 @@ export function CodeInspectorView({
         </div>
 
         <div className="inspector-header-actions">
+          <button
+            type="button"
+            className="action-btn secondary procedural-rules-btn"
+            onClick={() => setRulesModalOpen(true)}
+            title="Scan project and batch-apply learned procedural memory rules"
+          >
+            ⚡ Apply Rules
+          </button>
+
           <button
             type="button"
             className="action-btn secondary test-runner-btn"
@@ -1093,6 +1117,14 @@ export function CodeInspectorView({
         projectName={targetName.toLowerCase().includes("expo") ? "codemorph-expo-app" : "codemorph-nextjs-app"}
         entries={projectEntries}
         onInjectFile={handleInjectDeploymentFile}
+      />
+
+      {/* Procedural Rules Enforcement Modal */}
+      <ProceduralRulesEnforcementModal
+        isOpen={rulesModalOpen}
+        onClose={() => setRulesModalOpen(false)}
+        entries={projectEntries}
+        onApplyFixes={handleApplyProceduralRules}
       />
     </div>
   );
