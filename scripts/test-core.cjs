@@ -3570,3 +3570,119 @@ export default function FlawedPage() {
   assert.equal(healedReport.criticalCount, 0);
   assert.equal(healedReport.totalFixable, 0);
 });
+
+test("Component catalog generator discovers UI primitives, parses TypeScript interfaces, synthesizes mock props, and injects Storybook CSF stories", () => {
+  const {
+    discoverComponentsAndProps,
+    injectStorybookStoriesIntoProject,
+  } = require("../lib/components/catalog-generator.ts");
+
+  const sampleEntries = [
+    {
+      path: "app/layout.tsx",
+      content: `export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return <html><body>{children}</body></html>;
+}`,
+    },
+    {
+      path: "app/page.tsx",
+      content: `export default function HomePage() { return <div>Home</div>; }`,
+    },
+    {
+      path: "components/Button.tsx",
+      content: `"use client";
+import React from "react";
+
+export interface ButtonProps {
+  label: string;
+  variant?: "primary" | "secondary" | "danger";
+  disabled?: boolean;
+  onClick?: () => void;
+}
+
+export function Button({ label, variant = "primary", disabled, onClick }: ButtonProps) {
+  return (
+    <button className={variant} disabled={disabled} onClick={onClick}>
+      {label}
+    </button>
+  );
+}`,
+    },
+    {
+      path: "components/UserProfileCard.tsx",
+      content: `import React from "react";
+
+export interface UserProfileCardProps {
+  name: string;
+  role: string;
+  followersCount?: number;
+}
+
+export default function UserProfileCard({ name, role, followersCount }: UserProfileCardProps) {
+  return (
+    <div className="card">
+      <h3>{name}</h3>
+      <p>{role}</p>
+      <span>{followersCount}</span>
+    </div>
+  );
+}`,
+    },
+  ];
+
+  // 1. Discover components
+  const catalog = discoverComponentsAndProps(sampleEntries);
+  assert.equal(catalog.totalComponents, 2);
+  assert.equal(catalog.clientComponentsCount, 1);
+  assert.equal(catalog.serverComponentsCount, 1);
+
+  // Check Button component
+  const buttonComp = catalog.components.find((c) => c.name === "Button");
+  assert.ok(buttonComp);
+  assert.equal(buttonComp.isClientComponent, true);
+  assert.equal(buttonComp.exportType, "named");
+  assert.equal(buttonComp.props.length, 4);
+
+  const variantProp = buttonComp.props.find((p) => p.name === "variant");
+  assert.ok(variantProp);
+  assert.equal(variantProp.type, "enum");
+  assert.deepEqual(variantProp.enumValues, ["primary", "secondary", "danger"]);
+  assert.equal(variantProp.required, false);
+
+  const disabledProp = buttonComp.props.find((p) => p.name === "disabled");
+  assert.ok(disabledProp);
+  assert.equal(disabledProp.type, "boolean");
+
+  const clickProp = buttonComp.props.find((p) => p.name === "onClick");
+  assert.ok(clickProp);
+  assert.equal(clickProp.type, "function");
+
+  // Check Storybook CSF 3 Story Code
+  assert.ok(buttonComp.storybookStoryCode.includes('import type { Meta, StoryObj } from "@storybook/react";'));
+  assert.ok(buttonComp.storybookStoryCode.includes('import { Button } from "./Button";'));
+  assert.ok(buttonComp.storybookStoryCode.includes('tags: ["autodocs"]'));
+  assert.ok(buttonComp.storybookStoryCode.includes("export const Default: Story"));
+
+  // Check UserProfileCard component
+  const cardComp = catalog.components.find((c) => c.name === "UserProfileCard");
+  assert.ok(cardComp);
+  assert.equal(cardComp.isClientComponent, false);
+  assert.equal(cardComp.exportType, "default");
+  assert.equal(cardComp.props.length, 3);
+
+  const followersProp = cardComp.props.find((p) => p.name === "followersCount");
+  assert.ok(followersProp);
+  assert.equal(followersProp.type, "number");
+
+  assert.ok(cardComp.storybookStoryCode.includes('import UserProfileCard from "./UserProfileCard";'));
+
+  // 2. Inject Storybook Stories into Project
+  const injection = injectStorybookStoriesIntoProject(sampleEntries, catalog.components);
+  assert.equal(injection.generatedStoriesCount, 2);
+  assert.ok(injection.injectedStoryPaths.includes("components/Button.stories.tsx"));
+  assert.ok(injection.injectedStoryPaths.includes("components/UserProfileCard.stories.tsx"));
+
+  // Verify .storybook configuration files were added
+  assert.ok(injection.updatedEntries.some((e) => e.path === ".storybook/main.ts"));
+  assert.ok(injection.updatedEntries.some((e) => e.path === ".storybook/preview.ts"));
+});

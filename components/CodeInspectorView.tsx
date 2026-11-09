@@ -22,6 +22,8 @@ import { CodeSearchDrawer } from "./CodeSearchDrawer";
 import { GitExportModal } from "./GitExportModal";
 import { MigrationDoctorModal } from "./MigrationDoctorModal";
 import { runMigrationDoctor } from "@/lib/doctor/health-doctor";
+import { ComponentCatalogModal } from "./ComponentCatalogModal";
+import { discoverComponentsAndProps } from "@/lib/components/catalog-generator";
 
 interface SourceManifest {
   framework: string;
@@ -99,6 +101,7 @@ export function CodeInspectorView({
   const [searchDrawerOpen, setSearchDrawerOpen] = useState(false);
   const [gitModalOpen, setGitModalOpen] = useState(false);
   const [doctorModalOpen, setDoctorModalOpen] = useState(false);
+  const [catalogModalOpen, setCatalogModalOpen] = useState(false);
 
   // Checkpoint History Time-Machine state
   const [checkpointHistory, setCheckpointHistory] = useState<CheckpointHistory>(() =>
@@ -271,6 +274,27 @@ export function CodeInspectorView({
         prev,
         `Doctor Autofix (${fixCount} issue${fixCount > 1 ? "s" : ""} healed)`,
         "doctor_autofix",
+        updatedEntries
+      )
+    );
+    if (onUpdateEntries) {
+      onUpdateEntries(updatedEntries);
+    }
+    setSaveToast(true);
+    setTimeout(() => setSaveToast(false), 2500);
+  };
+
+  const componentCatalog = useMemo(() => {
+    return discoverComponentsAndProps(projectEntries);
+  }, [projectEntries]);
+
+  const handleInjectStorybook = (updatedEntries: ZipEntry[], injectedCount: number) => {
+    setProjectEntries(updatedEntries);
+    setCheckpointHistory((prev) =>
+      createCheckpoint(
+        prev,
+        `Injected Storybook Stories (${injectedCount} .stories.tsx files)`,
+        "scaffold",
         updatedEntries
       )
     );
@@ -607,6 +631,15 @@ export function CodeInspectorView({
             title="Run In-Browser Automated Test Suite & Route Assertion Engine"
           >
             🧪 Run Tests
+          </button>
+
+          <button
+            type="button"
+            className="action-btn secondary catalog-btn"
+            onClick={() => setCatalogModalOpen(true)}
+            title="Open Interactive Component Showcase & Storybook Catalog"
+          >
+            🧩 Components ({componentCatalog.totalComponents})
           </button>
 
           <button
@@ -1237,6 +1270,16 @@ export function CodeInspectorView({
         entries={projectEntries}
         targetName={targetName}
         onApplyAutofix={handleApplyDoctorAutofix}
+        onSelectFile={(filePath) => setSelectedPath(filePath)}
+      />
+
+      {/* Interactive Component Showcase & Storybook Catalog Modal */}
+      <ComponentCatalogModal
+        isOpen={catalogModalOpen}
+        onClose={() => setCatalogModalOpen(false)}
+        entries={projectEntries}
+        targetName={targetName}
+        onInjectStorybook={handleInjectStorybook}
         onSelectFile={(filePath) => setSelectedPath(filePath)}
       />
     </div>
