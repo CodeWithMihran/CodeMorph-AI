@@ -2500,3 +2500,124 @@ test("Checkpoint time-machine manages versioned snapshots, computes change delta
   assert.equal(h5.checkpoints[0].triggerType, "initial_generation"); // Baseline preserved!
   assert.equal(h5.checkpoints[3].label, "Extra Step 5");
 });
+
+test("Simulated dev server and bundle execution engine evaluates route chunk trees, diagnoses missing client directives, and synthesizes Metro logs", () => {
+  const {
+    checkClientDirectives,
+    checkUnresolvedRelativeImports,
+    simulateNextBuild,
+    simulateExpoMetroStart,
+    simulateLiveRequestLogs,
+  } = require("../lib/terminal/bundle-simulator.ts");
+
+  // 1. Client directive check
+  const badComponent = `import React, { useState } from "react";
+export default function Counter() {
+  const [c, setC] = useState(0);
+  return <button onClick={() => setC(c + 1)}>Count: {c}</button>;
+}`;
+  const badDiags = checkClientDirectives("app/counter/page.tsx", badComponent);
+  assert.ok(badDiags.length > 0);
+  assert.equal(badDiags[0].severity, "warning");
+  assert.match(badDiags[0].message, /use client/);
+
+  const goodComponent = `"use client";
+import React, { useState } from "react";
+export default function Counter() {
+  const [c, setC] = useState(0);
+  return <button onClick={() => setC(c + 1)}>Count: {c}</button>;
+}`;
+  const goodDiags = checkClientDirectives("app/counter/page.tsx", goodComponent);
+  assert.equal(goodDiags.length, 0);
+
+  // 2. Relative import resolution check
+  const entryWithMissingImport = {
+    path: "app/dashboard/page.tsx",
+    content: `import { UserCard } from "./components/UserCard";\nexport default function Page() { return null; }`,
+  };
+  const unresolvedDiags = checkUnresolvedRelativeImports(entryWithMissingImport, [entryWithMissingImport]);
+  assert.equal(unresolvedDiags.length, 1);
+  assert.match(unresolvedDiags[0].message, /Cannot resolve relative import '\.\/components\/UserCard'/);
+
+  const entriesWithValidImport = [
+    entryWithMissingImport,
+    { path: "app/dashboard/components/UserCard.tsx", content: "export function UserCard() { return null; }" },
+  ];
+  const resolvedDiags = checkUnresolvedRelativeImports(entryWithMissingImport, entriesWithValidImport);
+  assert.equal(resolvedDiags.length, 0);
+
+  // 3. Next.js Build Simulation
+  const sampleNextEntries = [
+    {
+      path: "app/page.tsx",
+      content: `export default function Page() { return <h1>Home</h1>; }`,
+    },
+    {
+      path: "app/about/page.tsx",
+      content: `export default function About() { return <h1>About</h1>; }`,
+    },
+    {
+      path: "app/posts/[slug]/page.tsx",
+      content: `export default function Post() { return <h1>Post</h1>; }`,
+    },
+    {
+      path: "app/api/users/route.ts",
+      content: `export async function GET() { return Response.json([]); }`,
+    },
+    {
+      path: "package.json",
+      content: `{"name": "test-app"}`,
+    },
+  ];
+
+  const buildRes = simulateNextBuild(sampleNextEntries);
+  assert.equal(buildRes.success, true);
+  assert.equal(buildRes.target, "nextjs");
+  assert.equal(buildRes.routes.length, 4);
+
+  // Check route types
+  const rootRoute = buildRes.routes.find((r) => r.route === "/");
+  assert.ok(rootRoute);
+  assert.equal(rootRoute.type, "static");
+
+  const dynamicRoute = buildRes.routes.find((r) => r.route === "/posts/[slug]");
+  assert.ok(dynamicRoute);
+  assert.equal(dynamicRoute.type, "dynamic");
+
+  const apiRoute = buildRes.routes.find((r) => r.route === "/api/users");
+  assert.ok(apiRoute);
+  assert.equal(apiRoute.type, "dynamic");
+
+  // Verify terminal logs formatting
+  assert.ok(buildRes.terminalLogs.some((l) => l.includes("▲ Next.js")));
+  assert.ok(buildRes.terminalLogs.some((l) => l.includes("Route (app)")));
+  assert.ok(buildRes.terminalLogs.some((l) => l.includes("First Load JS shared by all")));
+  assert.ok(buildRes.terminalLogs.some((l) => l.includes("✓ Production build ready")));
+  assert.ok(buildRes.totalBundleSizeBytes > 0);
+  assert.ok(buildRes.estimatedGzipBytes > 0);
+
+  // 4. Expo Metro Bundler Simulation
+  const sampleExpoEntries = [
+    {
+      path: "app/_layout.tsx",
+      content: `import { Stack } from "expo-router"; export default Stack;`,
+    },
+    {
+      path: "app/index.tsx",
+      content: `import { View, Text } from "react-native"; export default function Home() { return <View><Text>Hi</Text></View>; }`,
+    },
+  ];
+
+  const expoRes = simulateExpoMetroStart(sampleExpoEntries);
+  assert.equal(expoRes.success, true);
+  assert.equal(expoRes.port, 8081);
+  assert.ok(expoRes.registeredScreens.includes("app/index.tsx"));
+  assert.ok(expoRes.asciiQrCode.length > 0);
+  assert.ok(expoRes.terminalLogs.some((l) => l.includes("Starting Metro Bundler on port 8081")));
+  assert.ok(expoRes.terminalLogs.some((l) => l.includes("exp://127.0.0.1:8081")));
+
+  // 5. Live request logs simulation
+  const liveLogs = simulateLiveRequestLogs(buildRes.routes, "nextjs");
+  assert.ok(liveLogs.length >= 3);
+  assert.ok(liveLogs.some((l) => l.includes("GET / 200")));
+});

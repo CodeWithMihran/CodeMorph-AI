@@ -14,6 +14,7 @@ import {
 } from "@/lib/history/checkpoint-manager";
 import { SimulatedDevicePreview } from "./SimulatedDevicePreview";
 import { CheckpointTimelineModal } from "./CheckpointTimelineModal";
+import { SimulatedDevTerminal } from "./SimulatedDevTerminal";
 
 interface SourceManifest {
   framework: string;
@@ -83,6 +84,7 @@ export function CodeInspectorView({
   const [newFilePath, setNewFilePath] = useState("");
   const [newFileError, setNewFileError] = useState("");
   const [historyModalOpen, setHistoryModalOpen] = useState(false);
+  const [terminalOpen, setTerminalOpen] = useState(false);
 
   // Checkpoint History Time-Machine state
   const [checkpointHistory, setCheckpointHistory] = useState<CheckpointHistory>(() =>
@@ -480,6 +482,15 @@ export function CodeInspectorView({
         </div>
 
         <div className="inspector-header-actions">
+          <button
+            type="button"
+            className={`action-btn secondary terminal-toggle-btn ${terminalOpen ? "is-active" : ""}`}
+            onClick={() => setTerminalOpen((prev) => !prev)}
+            title="Toggle Simulated Dev Server & Bundle Execution Terminal"
+          >
+            &gt;_ Terminal
+          </button>
+
           <button
             type="button"
             className="action-btn secondary history-modal-btn"
@@ -910,6 +921,14 @@ export function CodeInspectorView({
           )}
         </main>
       </div>
+
+      {/* Simulated Dev Terminal */}
+      <SimulatedDevTerminal
+        entries={projectEntries}
+        targetName={targetName}
+        isOpen={terminalOpen}
+        onToggle={() => setTerminalOpen((prev) => !prev)}
+      />
 
       {/* New File Modal */}
       {newFileModalOpen && (
