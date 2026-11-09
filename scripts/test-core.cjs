@@ -3150,3 +3150,160 @@ export default function About() {
   assert.equal(updatedHistory.checkpoints[1].triggerType, "procedural_rules");
   assert.equal(updatedHistory.checkpoints[1].meta.modifiedFiles.length, 2);
 });
+
+test("Global code search and refactoring engine evaluates full-text queries, regex flags, file filters, atomic multi-file replace, and symbol definitions", () => {
+  const {
+    executeGlobalSearch,
+    executeGlobalReplace,
+    findSymbolDefinition,
+  } = require("../lib/search/code-search.ts");
+
+  const sampleEntries = [
+    {
+      path: "app/page.tsx",
+      content: `import React from "react";
+import { UserCard } from "@/components/UserCard";
+
+export default function HomePage() {
+  const title = "Welcome to CodeMorph";
+  return (
+    <main>
+      <h1>{title}</h1>
+      <UserCard name="Alice" role="Admin" />
+    </main>
+  );
+}`,
+    },
+    {
+      path: "components/UserCard.tsx",
+      content: `import React from "react";
+
+export interface UserCardProps {
+  name: string;
+  role: string;
+}
+
+export function UserCard({ name, role }: UserCardProps) {
+  return (
+    <div className="card">
+      <h3>{name}</h3>
+      <p>{role}</p>
+    </div>
+  );
+}`,
+    },
+    {
+      path: "package.json",
+      content: `{\n  "name": "my-migration-project",\n  "version": "1.0.0"\n}`,
+    },
+  ];
+
+  // 1. Basic Substring Search
+  const search1 = executeGlobalSearch(sampleEntries, {
+    query: "UserCard",
+    caseSensitive: false,
+    wholeWord: false,
+    isRegex: false,
+  });
+  assert.equal(search1.isValidQuery, true);
+  assert.equal(search1.totalFiles, 2);
+  assert.ok(search1.totalMatches >= 3);
+  assert.ok(search1.searchTimeMs >= 0);
+
+  // 2. Case-Sensitive vs Insenstive
+  const searchCaseSensitive = executeGlobalSearch(sampleEntries, {
+    query: "usercard",
+    caseSensitive: true,
+    wholeWord: false,
+    isRegex: false,
+  });
+  assert.equal(searchCaseSensitive.totalMatches, 0); // Exact case "usercard" doesn't exist
+
+  const searchCaseInsensitive = executeGlobalSearch(sampleEntries, {
+    query: "usercard",
+    caseSensitive: false,
+    wholeWord: false,
+    isRegex: false,
+  });
+  assert.ok(searchCaseInsensitive.totalMatches >= 3);
+
+  // 3. Whole Word Matching
+  const searchWord = executeGlobalSearch(sampleEntries, {
+    query: "role",
+    caseSensitive: true,
+    wholeWord: true,
+    isRegex: false,
+  });
+  assert.ok(searchWord.totalMatches >= 2);
+
+  // 4. File Filter (Include only *.tsx)
+  const searchFilter = executeGlobalSearch(sampleEntries, {
+    query: "name",
+    caseSensitive: false,
+    wholeWord: false,
+    isRegex: false,
+    fileFilter: "*.tsx",
+  });
+  assert.ok(searchFilter.fileResults.every((f) => f.filePath.endsWith(".tsx")));
+  assert.equal(searchFilter.fileResults.some((f) => f.filePath === "package.json"), false);
+
+  // Exclude package.json
+  const searchExclude = executeGlobalSearch(sampleEntries, {
+    query: "name",
+    caseSensitive: false,
+    wholeWord: false,
+    isRegex: false,
+    fileFilter: "!*.json",
+  });
+  assert.equal(searchExclude.fileResults.some((f) => f.filePath === "package.json"), false);
+
+  // 5. Regular Expression Search
+  const searchRegex = executeGlobalSearch(sampleEntries, {
+    query: "UserCard[A-Za-z]+",
+    caseSensitive: true,
+    wholeWord: false,
+    isRegex: true,
+  });
+  assert.equal(searchRegex.totalFiles, 1);
+  assert.ok(searchRegex.totalMatches >= 1); // Matches UserCardProps
+
+  // 6. Global Multi-File Replace
+  const replaceRes = executeGlobalReplace(
+    sampleEntries,
+    {
+      query: "UserCard",
+      caseSensitive: true,
+      wholeWord: true,
+      isRegex: false,
+    },
+    "UserProfileBadge"
+  );
+  assert.equal(replaceRes.affectedFilesCount, 2);
+  assert.ok(replaceRes.totalReplacedCount >= 3);
+
+  const updatedPage = replaceRes.updatedEntries.find((e) => e.path === "app/page.tsx");
+  assert.match(updatedPage.content, /import { UserProfileBadge }/);
+  assert.match(updatedPage.content, /<UserProfileBadge name="Alice"/);
+
+  const updatedCard = replaceRes.updatedEntries.find((e) => e.path === "components/UserCard.tsx");
+  assert.match(updatedCard.content, /export function UserProfileBadge/);
+
+  // package.json remains completely untouched
+  const updatedPkg = replaceRes.updatedEntries.find((e) => e.path === "package.json");
+  assert.equal(updatedPkg.content, sampleEntries[2].content);
+
+  // 7. Symbol Definition Lookup
+  const funcDef = findSymbolDefinition(sampleEntries, "UserCard");
+  assert.ok(funcDef);
+  assert.equal(funcDef.filePath, "components/UserCard.tsx");
+  assert.equal(funcDef.kind, "function");
+  assert.match(funcDef.lineContent, /export function UserCard/);
+
+  const typeDef = findSymbolDefinition(sampleEntries, "UserCardProps");
+  assert.ok(typeDef);
+  assert.equal(typeDef.filePath, "components/UserCard.tsx");
+  assert.equal(typeDef.kind, "interface");
+
+  const missingDef = findSymbolDefinition(sampleEntries, "NonExistentHelper");
+  assert.equal(missingDef, null);
+});

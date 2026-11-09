@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo, useRef } from "react";
+import React, { useState, useMemo, useRef, useEffect } from "react";
 import type { ZipEntry } from "@/lib/migration/zip";
 import { createZip } from "@/lib/migration/zip";
 import { computeLineDiff, type DiffSummary } from "@/lib/diff/line-diff";
@@ -18,6 +18,7 @@ import { SimulatedDevTerminal, type TerminalTab } from "./SimulatedDevTerminal";
 import { ArchitectureGraphModal } from "./ArchitectureGraphModal";
 import { DeploymentLaunchModal } from "./DeploymentLaunchModal";
 import { ProceduralRulesEnforcementModal } from "./ProceduralRulesEnforcementModal";
+import { CodeSearchDrawer } from "./CodeSearchDrawer";
 
 interface SourceManifest {
   framework: string;
@@ -92,6 +93,7 @@ export function CodeInspectorView({
   const [architectureModalOpen, setArchitectureModalOpen] = useState(false);
   const [deployModalOpen, setDeployModalOpen] = useState(false);
   const [rulesModalOpen, setRulesModalOpen] = useState(false);
+  const [searchDrawerOpen, setSearchDrawerOpen] = useState(false);
 
   // Checkpoint History Time-Machine state
   const [checkpointHistory, setCheckpointHistory] = useState<CheckpointHistory>(() =>
@@ -215,6 +217,35 @@ export function CodeInspectorView({
     setDraftContents({});
     setCheckpointHistory((prev) =>
       createCheckpoint(prev, summaryLabel, "procedural_rules", updatedEntries)
+    );
+    if (onUpdateEntries) {
+      onUpdateEntries(updatedEntries);
+    }
+    setSaveToast(true);
+    setTimeout(() => setSaveToast(false), 2500);
+  };
+
+  // Keyboard shortcut: Ctrl+Shift+F / Cmd+Shift+F to toggle Global Search Drawer
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "f") {
+        e.preventDefault();
+        setSearchDrawerOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener("keydown", handleGlobalKeyDown);
+    return () => window.removeEventListener("keydown", handleGlobalKeyDown);
+  }, []);
+
+  const handleSelectSearchMatch = (filePath: string) => {
+    setSelectedPath(filePath);
+  };
+
+  const handleApplyGlobalReplace = (updatedEntries: ZipEntry[], summaryLabel: string) => {
+    setProjectEntries(updatedEntries);
+    setDraftContents({});
+    setCheckpointHistory((prev) =>
+      createCheckpoint(prev, summaryLabel, "manual_edit", updatedEntries)
     );
     if (onUpdateEntries) {
       onUpdateEntries(updatedEntries);
@@ -521,6 +552,15 @@ export function CodeInspectorView({
         </div>
 
         <div className="inspector-header-actions">
+          <button
+            type="button"
+            className={`action-btn secondary search-drawer-btn ${searchDrawerOpen ? "is-active" : ""}`}
+            onClick={() => setSearchDrawerOpen((prev) => !prev)}
+            title="Global Multi-File Code Search & Refactor (Ctrl+Shift+F)"
+          >
+            🔍 Search
+          </button>
+
           <button
             type="button"
             className="action-btn secondary procedural-rules-btn"
@@ -1125,6 +1165,15 @@ export function CodeInspectorView({
         onClose={() => setRulesModalOpen(false)}
         entries={projectEntries}
         onApplyFixes={handleApplyProceduralRules}
+      />
+
+      {/* Global Multi-File Code Search & Refactoring Drawer */}
+      <CodeSearchDrawer
+        isOpen={searchDrawerOpen}
+        onClose={() => setSearchDrawerOpen(false)}
+        entries={projectEntries}
+        onSelectMatch={handleSelectSearchMatch}
+        onApplyReplace={handleApplyGlobalReplace}
       />
     </div>
   );
