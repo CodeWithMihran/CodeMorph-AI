@@ -2408,3 +2408,95 @@ test("In-browser simulated device and component previewer synthesizes sandboxed 
   assert.match(mobileDoc, /class="rn-touchable"/);
   assert.match(mobileDoc, /Welcome to Mobile/);
 });
+
+test("Checkpoint time-machine manages versioned snapshots, computes change deltas, enforces rolling buffer bounds, and restores prior states", () => {
+  const {
+    initCheckpointHistory,
+    createCheckpoint,
+    rollbackToCheckpoint,
+    compareCheckpoints,
+    computeEntryDiffStats,
+  } = require("../lib/history/checkpoint-manager.ts");
+
+  // 1. Initialize checkpoint history with baseline entries
+  const baselineEntries = [
+    {
+      path: "app/page.tsx",
+      content: "export default function Page() {\n  return <h1>Home</h1>;\n}\n",
+    },
+    {
+      path: "package.json",
+      content: JSON.stringify({ name: "my-app", version: "1.0.0" }, null, 2),
+    },
+  ];
+
+  const history = initCheckpointHistory(baselineEntries, "Initial Generation Baseline", 4);
+  assert.equal(history.checkpoints.length, 1);
+  assert.equal(history.checkpoints[0].triggerType, "initial_generation");
+  assert.equal(history.checkpoints[0].meta.fileCount, 2);
+  assert.equal(history.currentCheckpointId, history.checkpoints[0].id);
+
+  // 2. Compute diff stats utility check
+  const modifiedEntries = [
+    {
+      path: "app/page.tsx",
+      content: "export default function Page() {\n  return <h1>Updated Home</h1>;\n}\n",
+    },
+    {
+      path: "package.json",
+      content: JSON.stringify({ name: "my-app", version: "1.0.0" }, null, 2),
+    },
+    {
+      path: "app/about/page.tsx",
+      content: "export default function About() {\n  return <h1>About</h1>;\n}\n",
+    },
+  ];
+
+  const diffStats = computeEntryDiffStats(baselineEntries, modifiedEntries);
+  assert.equal(diffStats.fileCount, 3);
+  assert.ok(diffStats.modifiedFiles.includes("app/page.tsx"));
+  assert.ok(diffStats.modifiedFiles.includes("app/about/page.tsx"));
+  assert.ok(diffStats.totalAdditions > 0);
+
+  // 3. Record new checkpoint (manual edit)
+  const h2 = createCheckpoint(history, "Hot-patched Home & Added About", "manual_edit", modifiedEntries);
+  assert.equal(h2.checkpoints.length, 2);
+  assert.equal(h2.currentCheckpointId, h2.checkpoints[1].id);
+  assert.equal(h2.checkpoints[1].triggerType, "manual_edit");
+  assert.equal(h2.checkpoints[1].meta.fileCount, 3);
+
+  // 4. Record third checkpoint (AST codemod)
+  const codemodEntries = [
+    {
+      path: "app/page.tsx",
+      content: "import Image from 'next/image';\nexport default function Page() {\n  return <h1>Updated Home</h1>;\n}\n",
+    },
+    ...modifiedEntries.slice(1),
+  ];
+  const h3 = createCheckpoint(h2, "Codemod: Image Optimization", "codemod", codemodEntries);
+  assert.equal(h3.checkpoints.length, 3);
+  assert.equal(h3.checkpoints[2].triggerType, "codemod");
+
+  // 5. Compare checkpoints (codemod vs baseline)
+  const comparison = compareCheckpoints(h3.checkpoints[0], h3.checkpoints[2]);
+  assert.equal(comparison.filesModifiedCount, 2); // page.tsx and about/page.tsx
+  assert.ok(comparison.totalAdditions > 0);
+  assert.ok(comparison.fileDiffs.some((f) => f.path === "app/about/page.tsx" && f.status === "added"));
+  assert.ok(comparison.fileDiffs.some((f) => f.path === "package.json" && f.status === "unchanged"));
+  assert.ok(comparison.fileDiffs.some((f) => f.path === "app/page.tsx" && f.status === "modified"));
+
+  // 6. Rollback to baseline
+  const rollbackRes = rollbackToCheckpoint(h3, h3.checkpoints[0].id);
+  assert.equal(rollbackRes.restoredEntries.length, 2);
+  assert.equal(rollbackRes.restoredEntries[0].content, baselineEntries[0].content);
+  assert.equal(rollbackRes.updatedHistory.checkpoints.length, 4);
+  assert.equal(rollbackRes.updatedHistory.checkpoints[3].triggerType, "rollback");
+  assert.match(rollbackRes.updatedHistory.checkpoints[3].label, /Rollback to/);
+
+  // 7. Enforce bounded rolling buffer (maxCheckpoints = 4)
+  // Adding one more checkpoint should evict the oldest non-baseline checkpoint while preserving baseline at index 0
+  const h5 = createCheckpoint(rollbackRes.updatedHistory, "Extra Step 5", "scaffold", baselineEntries);
+  assert.equal(h5.checkpoints.length, 4); // Still capped at 4
+  assert.equal(h5.checkpoints[0].triggerType, "initial_generation"); // Baseline preserved!
+  assert.equal(h5.checkpoints[3].label, "Extra Step 5");
+});

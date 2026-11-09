@@ -6,7 +6,14 @@ import { createZip } from "@/lib/migration/zip";
 import { computeLineDiff, type DiffSummary } from "@/lib/diff/line-diff";
 import { validateFileSyntax, type ValidationStatus } from "@/lib/editor/client-validator";
 import { detectApplicableCodemods, type CodemodAction } from "@/lib/codemods/engine";
+import {
+  initCheckpointHistory,
+  createCheckpoint,
+  rollbackToCheckpoint,
+  type CheckpointHistory,
+} from "@/lib/history/checkpoint-manager";
 import { SimulatedDevicePreview } from "./SimulatedDevicePreview";
+import { CheckpointTimelineModal } from "./CheckpointTimelineModal";
 
 interface SourceManifest {
   framework: string;
@@ -75,6 +82,12 @@ export function CodeInspectorView({
   const [newFileModalOpen, setNewFileModalOpen] = useState(false);
   const [newFilePath, setNewFilePath] = useState("");
   const [newFileError, setNewFileError] = useState("");
+  const [historyModalOpen, setHistoryModalOpen] = useState(false);
+
+  // Checkpoint History Time-Machine state
+  const [checkpointHistory, setCheckpointHistory] = useState<CheckpointHistory>(() =>
+    initCheckpointHistory(entries, "Initial AI Generation Baseline", 20)
+  );
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const lineGutterRef = useRef<HTMLDivElement>(null);
@@ -163,12 +176,28 @@ export function CodeInspectorView({
     if (!selectedEntry) return;
     const res = action.apply(activeContent);
     if (res.changed) {
-      setDraftContents((prev) => ({
-        ...prev,
-        [selectedEntry.path]: res.code,
-      }));
+      const updated = projectEntries.map((e) =>
+        e.path === selectedEntry.path ? { ...e, content: res.code } : e
+      );
+      setProjectEntries(updated);
+      setDraftContents((prev) => {
+        const next = { ...prev };
+        delete next[selectedEntry.path];
+        return next;
+      });
+      setCheckpointHistory((prev) =>
+        createCheckpoint(
+          prev,
+          `Codemod: ${action.label} (${selectedEntry.path})`,
+          "codemod",
+          updated
+        )
+      );
       setSaveToast(true);
       setTimeout(() => setSaveToast(false), 2500);
+      if (onUpdateEntries) {
+        onUpdateEntries(updated);
+      }
     }
   };
 
@@ -230,6 +259,9 @@ export function CodeInspectorView({
       delete next[selectedEntry.path];
       return next;
     });
+    setCheckpointHistory((prev) =>
+      createCheckpoint(prev, `Manual Edit: ${selectedEntry.path}`, "manual_edit", updated)
+    );
     setSaveToast(true);
     setTimeout(() => setSaveToast(false), 2000);
     if (onUpdateEntries) {
@@ -251,6 +283,9 @@ export function CodeInspectorView({
         e.path === selectedEntry.path ? { ...e, content: originalContent } : e
       );
       setProjectEntries(updated);
+      setCheckpointHistory((prev) =>
+        createCheckpoint(prev, `Reverted: ${selectedEntry.path}`, "rollback", updated)
+      );
       if (onUpdateEntries) {
         onUpdateEntries(updated);
       }
@@ -268,6 +303,9 @@ export function CodeInspectorView({
     });
     setProjectEntries(reverted);
     setDraftContents({});
+    setCheckpointHistory((prev) =>
+      createCheckpoint(prev, "Reverted All Files to Baseline", "rollback", reverted)
+    );
     if (onUpdateEntries) {
       onUpdateEntries(reverted);
     }
@@ -299,6 +337,9 @@ export function CodeInspectorView({
     const updated: ZipEntry[] = [...projectEntries, { path: cleanPath, content: defaultContent }];
     setProjectEntries(updated);
     setSelectedPath(cleanPath);
+    setCheckpointHistory((prev) =>
+      createCheckpoint(prev, `Created File: ${cleanPath}`, "manual_edit", updated)
+    );
     setViewMode("edit");
     setNewFileModalOpen(false);
     setNewFilePath("");
@@ -332,10 +373,29 @@ export function CodeInspectorView({
       delete next[selectedEntry.path];
       return next;
     });
+    setCheckpointHistory((prev) =>
+      createCheckpoint(prev, `Deleted File: ${selectedEntry.path}`, "manual_edit", updated)
+    );
     const nextSelected = updated[0]?.path ?? "";
     setSelectedPath(nextSelected);
     if (onUpdateEntries) {
       onUpdateEntries(updated);
+    }
+  };
+
+  // Rollback to a specific historical checkpoint
+  const handleRestoreCheckpoint = (checkpointId: string) => {
+    const { updatedHistory, restoredEntries } = rollbackToCheckpoint(
+      checkpointHistory,
+      checkpointId
+    );
+    setCheckpointHistory(updatedHistory);
+    setProjectEntries(restoredEntries);
+    setDraftContents({});
+    setSaveToast(true);
+    setTimeout(() => setSaveToast(false), 2500);
+    if (onUpdateEntries) {
+      onUpdateEntries(restoredEntries);
     }
   };
 
@@ -420,6 +480,15 @@ export function CodeInspectorView({
         </div>
 
         <div className="inspector-header-actions">
+          <button
+            type="button"
+            className="action-btn secondary history-modal-btn"
+            onClick={() => setHistoryModalOpen(true)}
+            title="Open Checkpoint History & Time-Machine"
+          >
+            🕒 History ({checkpointHistory.checkpoints.length})
+          </button>
+
           {modifiedFiles.size > 0 && (
             <button
               type="button"
@@ -924,6 +993,14 @@ export function CodeInspectorView({
           </div>
         </div>
       )}
+
+      {/* Checkpoint Time-Machine Modal */}
+      <CheckpointTimelineModal
+        isOpen={historyModalOpen}
+        onClose={() => setHistoryModalOpen(false)}
+        history={checkpointHistory}
+        onRestoreCheckpoint={handleRestoreCheckpoint}
+      />
     </div>
   );
 }
