@@ -2910,3 +2910,145 @@ export function Nav() {
   assert.ok(corruptedImport.errors.length > 0);
   assert.equal(corruptedImport.imported.length, 0);
 });
+
+test("In-browser test runner engine evaluates route smoke stability, navigation 404 crawler, accessibility compliance, and synthesizes Vitest/Jest reports", () => {
+  const {
+    validateRouteSmoke,
+    validateNavigationLinks,
+    validateAccessibilityMeta,
+    runSimulatedTestSuite,
+  } = require("../lib/testing/test-runner.ts");
+
+  // 1. Route Component Smoke Validation
+  const validRoute = {
+    path: "app/page.tsx",
+    content: `export default function Page() { return <main><h1>Hello World</h1></main>; }`,
+  };
+  const smokePass = validateRouteSmoke(validRoute);
+  assert.equal(smokePass.passed, true);
+
+  const missingExportRoute = {
+    path: "app/broken/page.tsx",
+    content: `function InternalComponent() { return <div>No default export</div>; }`,
+  };
+  const smokeFailNoExport = validateRouteSmoke(missingExportRoute);
+  assert.equal(smokeFailNoExport.passed, false);
+  assert.match(smokeFailNoExport.error, /does not have a default export/);
+
+  const syntaxErrorRoute = {
+    path: "app/syntax/page.tsx",
+    content: `export default function Page() { return <div>Unclosed bracket;`,
+  };
+  const smokeFailSyntax = validateRouteSmoke(syntaxErrorRoute);
+  assert.equal(smokeFailSyntax.passed, false);
+  assert.match(smokeFailSyntax.error, /unclosed brace/i);
+
+  // 2. Navigation Link Integrity & 404 Crawler
+  const knownRoutes = ["/", "/dashboard", "/users", "/users/[id]"];
+  const navEntries = [
+    {
+      path: "app/page.tsx",
+      content: `import Link from 'next/link';
+export default function Nav() {
+  return (
+    <nav>
+      <Link href="/dashboard">Dashboard</Link>
+      <Link href="/users/42">User Profile</Link>
+      <Link href="https://github.com">External Link</Link>
+      <Link href="/broken-dead-route">Dead Link</Link>
+    </nav>
+  );
+}`,
+    },
+  ];
+
+  const navResult = validateNavigationLinks(navEntries, knownRoutes);
+  assert.equal(navResult.valid, false);
+  assert.equal(navResult.totalLinks, 4);
+  assert.equal(navResult.deadLinks.length, 1);
+  assert.equal(navResult.deadLinks[0].targetUrl, "/broken-dead-route");
+  assert.equal(navResult.deadLinks[0].sourceFile, "app/page.tsx");
+
+  // Clean navigation entries
+  const cleanNavEntries = [
+    {
+      path: "app/page.tsx",
+      content: `<Link href="/dashboard">Dashboard</Link><Link href="/">Home</Link>`,
+    },
+  ];
+  const cleanNavResult = validateNavigationLinks(cleanNavEntries, knownRoutes);
+  assert.equal(cleanNavResult.valid, true);
+  assert.equal(cleanNavResult.deadLinks.length, 0);
+
+  // 3. Accessibility & Metadata Compliance
+  const accessibleEntries = [
+    {
+      path: "app/layout.tsx",
+      content: `export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="en">
+      <body>{children}</body>
+    </html>
+  );
+}`,
+    },
+    {
+      path: "app/page.tsx",
+      content: `import Image from 'next/image';
+export default function Page() {
+  return <Image src="/hero.png" alt="Hero Image" width={500} height={300} />;
+}`,
+    },
+  ];
+  const a11yPass = validateAccessibilityMeta(accessibleEntries, false);
+  assert.equal(a11yPass.passed, true);
+  assert.equal(a11yPass.issues.length, 0);
+
+  const missingAltEntries = [
+    {
+      path: "app/layout.tsx",
+      content: `<html><body></body></html>`,
+    },
+    {
+      path: "app/page.tsx",
+      content: `<img src="/banner.png" />`,
+    },
+  ];
+  const a11yFail = validateAccessibilityMeta(missingAltEntries, false);
+  assert.equal(a11yFail.passed, false);
+  assert.ok(a11yFail.issues.some((i) => i.includes("missing required 'alt'")));
+
+  // 4. Full Automated Test Suite Execution (Next.js)
+  const fullNextEntries = [
+    ...accessibleEntries,
+    {
+      path: "app/dashboard/page.tsx",
+      content: `export default function Dashboard() { return <h2>Dashboard</h2>; }`,
+    },
+  ];
+  const nextSuite = runSimulatedTestSuite(fullNextEntries, "Next.js App Router (TypeScript)");
+  assert.equal(nextSuite.framework, "vitest");
+  assert.equal(nextSuite.target, "nextjs");
+  assert.ok(nextSuite.totalTests >= 3);
+  assert.equal(nextSuite.passedCount, nextSuite.totalTests);
+  assert.equal(nextSuite.passRate, 100);
+  assert.ok(nextSuite.terminalLogs.some((l) => l.includes("✓ TEST SUITE PASSED")));
+
+  // 5. Full Automated Test Suite Execution (Expo Mobile)
+  const fullExpoEntries = [
+    {
+      path: "app/_layout.tsx",
+      content: `import { Stack } from 'expo-router';\nexport default function Layout() { return <Stack />; }`,
+    },
+    {
+      path: "app/index.tsx",
+      content: `import { View, Text } from 'react-native';\nexport default function Home() { return <View><Text>Mobile</Text></View>; }`,
+    },
+  ];
+  const expoSuite = runSimulatedTestSuite(fullExpoEntries, "Expo Router (React Native Mobile)");
+  assert.equal(expoSuite.framework, "jest");
+  assert.equal(expoSuite.target, "expo");
+  assert.ok(expoSuite.totalTests >= 2);
+  assert.equal(expoSuite.passedCount, expoSuite.totalTests);
+  assert.equal(expoSuite.passRate, 100);
+});

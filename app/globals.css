@@ -7281,3 +7281,169 @@ a { color: inherit; }
   gap: 10px;
   margin-top: 6px;
 }
+
+/* ==========================================================================
+   In-Browser Test Suite Runner & Route Assertion Visual Styles
+   ========================================================================== */
+
+.term-test-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.toggle-view-btn {
+  background: #334155;
+  color: #f1f5f9;
+}
+
+.toggle-view-btn:hover {
+  background: #475569;
+}
+
+.term-error {
+  color: #f87171;
+}
+
+.terminal-visual-tests-wrapper {
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.visual-tests-filter-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #1e293b;
+}
+
+.filter-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: #94a3b8;
+  margin-right: 4px;
+}
+
+.filter-pill {
+  padding: 3px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  background: #1e293b;
+  color: #cbd5e1;
+  border: 1px solid #334155;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.filter-pill:hover {
+  background: #334155;
+}
+
+.filter-pill.is-active {
+  background: #286d51;
+  border-color: #34d399;
+  color: #fff;
+}
+
+.visual-tests-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.visual-test-card {
+  background: #0f172a;
+  border: 1px solid #1e293b;
+  border-radius: 6px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.visual-test-card.is-pass {
+  border-left: 3px solid #22c55e;
+}
+
+.visual-test-card.is-fail {
+  border-left: 3px solid #ef4444;
+  background: #1c1117;
+}
+
+.test-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.test-status-badge {
+  font-size: 10px;
+  font-weight: 800;
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+
+.visual-test-card.is-pass .test-status-badge {
+  background: rgba(34, 197, 94, 0.2);
+  color: #4ade80;
+}
+
+.visual-test-card.is-fail .test-status-badge {
+  background: rgba(239, 68, 68, 0.25);
+  color: #f87171;
+}
+
+.test-file-path {
+  font-family: monospace;
+  font-size: 11px;
+  color: #94a3b8;
+  flex: 1;
+}
+
+.test-duration {
+  font-size: 10px;
+  color: #64748b;
+  font-family: monospace;
+}
+
+.test-card-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #e2e8f0;
+}
+
+.test-card-error {
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 4px;
+  padding: 6px 10px;
+  font-size: 11px;
+  color: #fca5a5;
+  line-height: 1.45;
+}
+
+.test-card-error strong {
+  color: #f87171;
+}
+
+.test-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 10px;
+  color: #64748b;
+}
+
+.test-category-label {
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #94a3b8;
+}

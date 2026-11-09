@@ -14,7 +14,7 @@ import {
 } from "@/lib/history/checkpoint-manager";
 import { SimulatedDevicePreview } from "./SimulatedDevicePreview";
 import { CheckpointTimelineModal } from "./CheckpointTimelineModal";
-import { SimulatedDevTerminal } from "./SimulatedDevTerminal";
+import { SimulatedDevTerminal, type TerminalTab } from "./SimulatedDevTerminal";
 import { ArchitectureGraphModal } from "./ArchitectureGraphModal";
 import { DeploymentLaunchModal } from "./DeploymentLaunchModal";
 
@@ -87,6 +87,7 @@ export function CodeInspectorView({
   const [newFileError, setNewFileError] = useState("");
   const [historyModalOpen, setHistoryModalOpen] = useState(false);
   const [terminalOpen, setTerminalOpen] = useState(false);
+  const [terminalInitialTab, setTerminalInitialTab] = useState<TerminalTab>("build");
   const [architectureModalOpen, setArchitectureModalOpen] = useState(false);
   const [deployModalOpen, setDeployModalOpen] = useState(false);
 
@@ -505,6 +506,18 @@ export function CodeInspectorView({
         </div>
 
         <div className="inspector-header-actions">
+          <button
+            type="button"
+            className="action-btn secondary test-runner-btn"
+            onClick={() => {
+              setTerminalInitialTab("tests");
+              setTerminalOpen(true);
+            }}
+            title="Run In-Browser Automated Test Suite & Route Assertion Engine"
+          >
+            🧪 Run Tests
+          </button>
+
           <button
             type="button"
             className="action-btn secondary deploy-modal-btn"
@@ -965,10 +978,12 @@ export function CodeInspectorView({
 
       {/* Simulated Dev Terminal */}
       <SimulatedDevTerminal
+        key={terminalInitialTab}
         entries={projectEntries}
         targetName={targetName}
         isOpen={terminalOpen}
         onToggle={() => setTerminalOpen((prev) => !prev)}
+        initialTab={terminalInitialTab}
       />
 
       {/* New File Modal */}
