@@ -3714,3 +3714,116 @@ export default function UserProfileCard({ name, role, followersCount }: UserProf
   assert.ok(injection.updatedEntries.some((e) => e.path === ".storybook/main.ts"));
   assert.ok(injection.updatedEntries.some((e) => e.path === ".storybook/preview.ts"));
 });
+
+test("Universal Cross-Platform Target Synchronizer transpiles primitives, maps routes, and synthesizes monorepo packages", () => {
+  const {
+    transpileWebCodeToExpo,
+    transpileExpoCodeToWeb,
+    synchronizeCrossPlatformTwin,
+  } = require("../lib/synchronizer/universal-transpiler.ts");
+
+  // 1. Transpile Web (Next.js) JSX to Expo React Native
+  const webInput = `"use client";
+import React, { useState } from "react";
+import Link from "next/link";
+
+export default function HeroBanner() {
+  const [query, setQuery] = useState("");
+  return (
+    <div className="container">
+      <h1>Welcome to CodeMorph</h1>
+      <p>Automated Modernization Platform</p>
+      <input type="text" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search..." />
+      <button onClick={() => alert(query)}>Submit</button>
+      <Link href="/catalog">Explore Catalog</Link>
+      <img src="/logo.png" alt="Logo" />
+    </div>
+  );
+}`;
+
+  const expoRes = transpileWebCodeToExpo(webInput);
+  assert.ok(expoRes.mappedCount >= 5);
+  // Directive stripped
+  assert.ok(!expoRes.transpiled.startsWith('"use client";'));
+  // Primitives mapped
+  assert.ok(expoRes.transpiled.includes("<View className=\"container\">"));
+  assert.ok(expoRes.transpiled.includes("<Text>Welcome to CodeMorph</Text>"));
+  assert.ok(expoRes.transpiled.includes("<Text>Automated Modernization Platform</Text>"));
+  assert.ok(expoRes.transpiled.includes("<Pressable onPress="));
+  assert.ok(expoRes.transpiled.includes("<TextInput"));
+  assert.ok(expoRes.transpiled.includes('source={{ uri: "/logo.png" }}'));
+  // Imports added & mapped
+  assert.ok(expoRes.transpiled.includes('from "react-native"'));
+  assert.ok(expoRes.transpiled.includes('from "expo-router"'));
+
+  // 2. Transpile Expo Mobile to Web (Next.js)
+  const expoInput = `import React, { useState } from "react";
+import { View, Text, Pressable, TextInput } from "react-native";
+import { Link } from "expo-router";
+
+export default function MobileCard() {
+  const [val, setVal] = useState("");
+  return (
+    <View>
+      <Text>Card Title</Text>
+      <TextInput value={val} onChangeText={setVal} />
+      <Pressable onPress={() => console.log(val)}>
+        <Text>Action</Text>
+      </Pressable>
+    </View>
+  );
+}`;
+
+  const webRes = transpileExpoCodeToWeb(expoInput);
+  assert.ok(webRes.mappedCount >= 4);
+  // Directive injected for interactive component
+  assert.ok(webRes.transpiled.startsWith('"use client";'));
+  // Primitives mapped to web
+  assert.ok(webRes.transpiled.includes("<div>"));
+  assert.ok(webRes.transpiled.includes("<p>Card Title</p>"));
+  assert.ok(webRes.transpiled.includes("<input"));
+  assert.ok(webRes.transpiled.includes("<button onClick="));
+  assert.ok(!webRes.transpiled.includes('from "react-native"'));
+
+  // 3. Full Project Cross-Platform Synchronization & Monorepo Packaging
+  const projectEntries = [
+    {
+      path: "app/page.tsx",
+      content: webInput,
+    },
+    {
+      path: "app/catalog/page.tsx",
+      content: `export default function Catalog() { return <div><p>Catalog Items</p></div>; }`,
+    },
+    {
+      path: "components/Header.tsx",
+      content: `export function Header() { return <header><p>Site Header</p></header>; }`,
+    },
+  ];
+
+  const sync = synchronizeCrossPlatformTwin(projectEntries, "nextjs");
+  assert.equal(sync.sourcePlatform, "nextjs");
+  assert.equal(sync.targetPlatform, "expo");
+  assert.ok(sync.filePairs.length >= 3);
+  assert.ok(sync.totalMappedPrimitives > 0);
+
+  // Check route mapping to Expo conventions
+  const indexRoute = sync.targetEntries.find((e) => e.path === "app/index.tsx");
+  assert.ok(indexRoute, "app/page.tsx mapped to app/index.tsx");
+  assert.ok(indexRoute.content.includes("<View"));
+
+  const catalogRoute = sync.targetEntries.find((e) => e.path === "app/catalog.tsx");
+  assert.ok(catalogRoute, "app/catalog/page.tsx mapped to app/catalog.tsx");
+
+  // Check Expo SDK 58 scaffold injected
+  assert.ok(sync.targetEntries.some((e) => e.path === "package.json"));
+  assert.ok(sync.targetEntries.some((e) => e.path === "app.json"));
+  assert.ok(sync.targetEntries.some((e) => e.path === "app/_layout.tsx"));
+  assert.ok(sync.targetEntries.some((e) => e.path === "metro.config.js"));
+
+  // Check Universal Monorepo Package synthesis
+  assert.ok(sync.universalMonorepoEntries.some((e) => e.path === "package.json"));
+  assert.ok(sync.universalMonorepoEntries.some((e) => e.path === "README.md"));
+  assert.ok(sync.universalMonorepoEntries.some((e) => e.path.startsWith("apps/web/")));
+  assert.ok(sync.universalMonorepoEntries.some((e) => e.path.startsWith("apps/mobile/")));
+});

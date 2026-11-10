@@ -22,6 +22,7 @@ import { CodeSearchDrawer } from "./CodeSearchDrawer";
 import { GitExportModal } from "./GitExportModal";
 import { MigrationDoctorModal } from "./MigrationDoctorModal";
 import { runMigrationDoctor } from "@/lib/doctor/health-doctor";
+import { UniversalTargetModal } from "./UniversalTargetModal";
 import { ComponentCatalogModal } from "./ComponentCatalogModal";
 import { discoverComponentsAndProps } from "@/lib/components/catalog-generator";
 
@@ -102,6 +103,8 @@ export function CodeInspectorView({
   const [gitModalOpen, setGitModalOpen] = useState(false);
   const [doctorModalOpen, setDoctorModalOpen] = useState(false);
   const [catalogModalOpen, setCatalogModalOpen] = useState(false);
+  const [universalModalOpen, setUniversalModalOpen] = useState(false);
+
 
   // Checkpoint History Time-Machine state
   const [checkpointHistory, setCheckpointHistory] = useState<CheckpointHistory>(() =>
@@ -300,6 +303,25 @@ export function CodeInspectorView({
     );
     if (onUpdateEntries) {
       onUpdateEntries(updatedEntries);
+    }
+    setSaveToast(true);
+    setTimeout(() => setSaveToast(false), 2500);
+  };
+
+  const handleSwitchTarget = (newEntries: ZipEntry[], newTargetName: string) => {
+    setProjectEntries(newEntries);
+    setDraftContents({});
+    setSelectedPath(newEntries[0]?.path ?? "");
+    setCheckpointHistory((prev) =>
+      createCheckpoint(
+        prev,
+        `Universal Target Switched: ${newTargetName}`,
+        "scaffold",
+        newEntries
+      )
+    );
+    if (onUpdateEntries) {
+      onUpdateEntries(newEntries);
     }
     setSaveToast(true);
     setTimeout(() => setSaveToast(false), 2500);
@@ -631,6 +653,15 @@ export function CodeInspectorView({
             title="Run In-Browser Automated Test Suite & Route Assertion Engine"
           >
             🧪 Run Tests
+          </button>
+
+          <button
+            type="button"
+            className="action-btn secondary universal-btn"
+            onClick={() => setUniversalModalOpen(true)}
+            title="Open Universal Cross-Platform Target Synchronizer (Next.js ↔ Expo)"
+          >
+            🔄 Universal Twin
           </button>
 
           <button
@@ -1281,6 +1312,15 @@ export function CodeInspectorView({
         targetName={targetName}
         onInjectStorybook={handleInjectStorybook}
         onSelectFile={(filePath) => setSelectedPath(filePath)}
+      />
+
+      {/* Universal Cross-Platform Target Synchronizer Modal */}
+      <UniversalTargetModal
+        isOpen={universalModalOpen}
+        onClose={() => setUniversalModalOpen(false)}
+        entries={projectEntries}
+        targetName={targetName}
+        onSwitchTarget={handleSwitchTarget}
       />
     </div>
   );
