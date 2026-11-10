@@ -23,6 +23,8 @@ import { GitExportModal } from "./GitExportModal";
 import { MigrationDoctorModal } from "./MigrationDoctorModal";
 import { runMigrationDoctor } from "@/lib/doctor/health-doctor";
 import { UniversalTargetModal } from "./UniversalTargetModal";
+import { PerformanceProfilerModal } from "./PerformanceProfilerModal";
+import { generatePerformanceProfile } from "@/lib/perf/bundle-profiler";
 import { ComponentCatalogModal } from "./ComponentCatalogModal";
 import { discoverComponentsAndProps } from "@/lib/components/catalog-generator";
 
@@ -104,6 +106,7 @@ export function CodeInspectorView({
   const [doctorModalOpen, setDoctorModalOpen] = useState(false);
   const [catalogModalOpen, setCatalogModalOpen] = useState(false);
   const [universalModalOpen, setUniversalModalOpen] = useState(false);
+  const [perfModalOpen, setPerfModalOpen] = useState(false);
 
 
   // Checkpoint History Time-Machine state
@@ -322,6 +325,27 @@ export function CodeInspectorView({
     );
     if (onUpdateEntries) {
       onUpdateEntries(newEntries);
+    }
+    setSaveToast(true);
+    setTimeout(() => setSaveToast(false), 2500);
+  };
+
+  const perfReport = useMemo(() => {
+    return generatePerformanceProfile(projectEntries, targetName);
+  }, [projectEntries, targetName]);
+
+  const handleApplyPerfOptimization = (updatedEntries: ZipEntry[], optCount: number) => {
+    setProjectEntries(updatedEntries);
+    setCheckpointHistory((prev) =>
+      createCheckpoint(
+        prev,
+        `Applied Performance Optimization (${optCount} dynamic imports)`,
+        "scaffold",
+        updatedEntries
+      )
+    );
+    if (onUpdateEntries) {
+      onUpdateEntries(updatedEntries);
     }
     setSaveToast(true);
     setTimeout(() => setSaveToast(false), 2500);
@@ -671,6 +695,15 @@ export function CodeInspectorView({
             title="Open Interactive Component Showcase & Storybook Catalog"
           >
             🧩 Components ({componentCatalog.totalComponents})
+          </button>
+
+          <button
+            type="button"
+            className="action-btn secondary perf-btn"
+            onClick={() => setPerfModalOpen(true)}
+            title="Open Route Latency & Bundle Footprint Performance Profiler"
+          >
+            ⚡ Perf ({perfReport.overallPerformanceScore}%)
           </button>
 
           <button
@@ -1321,6 +1354,16 @@ export function CodeInspectorView({
         entries={projectEntries}
         targetName={targetName}
         onSwitchTarget={handleSwitchTarget}
+      />
+
+      {/* Route Latency & Bundle Footprint Performance Profiler Modal */}
+      <PerformanceProfilerModal
+        isOpen={perfModalOpen}
+        onClose={() => setPerfModalOpen(false)}
+        entries={projectEntries}
+        targetName={targetName}
+        onApplyOptimization={handleApplyPerfOptimization}
+        onSelectFile={(filePath) => setSelectedPath(filePath)}
       />
     </div>
   );

@@ -3827,3 +3827,100 @@ export default function MobileCard() {
   assert.ok(sync.universalMonorepoEntries.some((e) => e.path.startsWith("apps/web/")));
   assert.ok(sync.universalMonorepoEntries.some((e) => e.path.startsWith("apps/mobile/")));
 });
+
+test("Route latency and bundle footprint performance profiler calculates Server/Client ratios, detects heavy imports, and projects Core Web Vitals", () => {
+  const {
+    generatePerformanceProfile,
+    applyDynamicImportOptimization,
+  } = require("../lib/perf/bundle-profiler.ts");
+
+  const sampleEntries = [
+    {
+      path: "app/page.tsx",
+      content: `export default function HomePage() {
+  return <main><h1>Home</h1></main>;
+}`,
+    },
+    {
+      path: "app/dashboard/page.tsx",
+      content: `"use client";
+import React, { useState } from "react";
+import _ from "lodash";
+import { Chart } from "chart.js";
+
+export default function DashboardPage() {
+  const [data, setData] = useState([1, 2, 3]);
+  return <div>Dashboard</div>;
+}`,
+    },
+    {
+      path: "components/Header.tsx",
+      content: `export function Header() {
+  return <header>Header</header>;
+}`,
+    },
+    {
+      path: "package.json",
+      content: JSON.stringify({ name: "perf-test", dependencies: { next: "15.0.0", react: "19.0.0" } }),
+    },
+  ];
+
+  // 1. Generate Performance Profile Report
+  const profile = generatePerformanceProfile(sampleEntries, "Next.js App Router");
+  assert.ok(profile.overallPerformanceScore > 0 && profile.overallPerformanceScore <= 100);
+  assert.equal(profile.serverComponentsCount, 2); // app/page.tsx and components/Header.tsx
+  assert.equal(profile.clientComponentsCount, 1); // app/dashboard/page.tsx
+  assert.equal(profile.serverComponentRatio, 0.67);
+  assert.equal(profile.clientComponentRatio, 0.33);
+
+  // Check Route Footprints
+  assert.equal(profile.routeFootprints.length, 2);
+
+  const homeRoute = profile.routeFootprints.find((r) => r.route === "/");
+  assert.ok(homeRoute);
+  assert.equal(homeRoute.scope, "server");
+  assert.equal(homeRoute.clientBundleWeightKb, 0, "Server Components add 0 kB client bundle");
+  assert.ok(homeRoute.estimatedFirstLoadJsKb > 0);
+
+  const dashboardRoute = profile.routeFootprints.find((r) => r.route === "/dashboard");
+  assert.ok(dashboardRoute);
+  assert.equal(dashboardRoute.scope, "client");
+  assert.ok(dashboardRoute.clientBundleWeightKb > 0, "Client Components have bundle weight");
+  assert.ok(dashboardRoute.heavyImports.length >= 2);
+  assert.ok(dashboardRoute.heavyImports.some((h) => h.name === "lodash"));
+  assert.ok(dashboardRoute.heavyImports.some((h) => h.name === "chart.js"));
+
+  // Check Heavy Dependencies
+  assert.equal(profile.heavyDependencies.length, 2);
+  const lodashDep = profile.heavyDependencies.find((d) => d.packageName === "lodash");
+  assert.ok(lodashDep);
+  assert.equal(lodashDep.canLazyLoad, true);
+  assert.ok(lodashDep.alternativeRecommendation.includes("lodash-es"));
+
+  const chartDep = profile.heavyDependencies.find((d) => d.packageName === "chart.js");
+  assert.ok(chartDep);
+  assert.ok(chartDep.alternativeRecommendation.includes("dynamic"));
+
+  // Check Core Web Vitals
+  assert.equal(profile.webVitals.length, 4);
+  const lcp = profile.webVitals.find((v) => v.metric.includes("LCP"));
+  assert.ok(lcp);
+  assert.ok(lcp.improvementPercent > 0);
+  assert.equal(lcp.grade, "good");
+
+  const inp = profile.webVitals.find((v) => v.metric.includes("INP"));
+  assert.ok(inp);
+  assert.ok(inp.improvementPercent > 0);
+
+  // 2. Dynamic Import Optimization
+  const optimized = applyDynamicImportOptimization(sampleEntries, "chart.js");
+  assert.equal(optimized.appliedCount, 1);
+
+  const updatedDashboard = optimized.updatedEntries.find((e) => e.path === "app/dashboard/page.tsx");
+  assert.ok(updatedDashboard);
+  assert.ok(updatedDashboard.content.includes('import dynamic from "next/dynamic";'));
+
+  const untouchedHome = optimized.updatedEntries.find((e) => e.path === "app/page.tsx");
+  assert.ok(untouchedHome);
+  assert.ok(!untouchedHome.content.includes("next/dynamic"));
+});
