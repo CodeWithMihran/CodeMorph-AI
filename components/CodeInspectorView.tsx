@@ -33,6 +33,8 @@ import { SeoStudioModal } from "./SeoStudioModal";
 import { synthesizeSeoArchitecture } from "@/lib/seo/metadata-synthesizer";
 import { IncrementalCutoverModal } from "./IncrementalCutoverModal";
 import { synthesizeStranglerCutover } from "@/lib/cutover/strangler-configurator";
+import { SecretsEnvModal } from "./SecretsEnvModal";
+import { synthesizeEnvStudioReport } from "@/lib/env/secret-scanner";
 
 interface SourceManifest {
   framework: string;
@@ -116,6 +118,7 @@ export function CodeInspectorView({
   const [apiStudioModalOpen, setApiStudioModalOpen] = useState(false);
   const [seoModalOpen, setSeoModalOpen] = useState(false);
   const [cutoverModalOpen, setCutoverModalOpen] = useState(false);
+  const [envModalOpen, setEnvModalOpen] = useState(false);
 
 
   // Checkpoint History Time-Machine state
@@ -413,6 +416,44 @@ export function CodeInspectorView({
         prev,
         `Applied Strangler Fig Cutover (${appliedCount} files: next.config.ts, middleware.ts)`,
         "scaffold",
+        updatedEntries
+      )
+    );
+    if (onUpdateEntries) {
+      onUpdateEntries(updatedEntries);
+    }
+    setSaveToast(true);
+    setTimeout(() => setSaveToast(false), 2500);
+  };
+
+  const envReport = useMemo(() => {
+    return synthesizeEnvStudioReport(projectEntries, targetType === "expo" ? "expo" : "nextjs");
+  }, [projectEntries, targetType]);
+
+  const handleApplyEnvInjection = (updatedEntries: ZipEntry[], appliedCount: number) => {
+    setProjectEntries(updatedEntries);
+    setCheckpointHistory((prev) =>
+      createCheckpoint(
+        prev,
+        `Injected Environment Architecture (${appliedCount} files: .env.example, lib/env.ts)`,
+        "scaffold",
+        updatedEntries
+      )
+    );
+    if (onUpdateEntries) {
+      onUpdateEntries(updatedEntries);
+    }
+    setSaveToast(true);
+    setTimeout(() => setSaveToast(false), 2500);
+  };
+
+  const handleApplyEnvCodemod = (updatedEntries: ZipEntry[], replacedCount: number) => {
+    setProjectEntries(updatedEntries);
+    setCheckpointHistory((prev) =>
+      createCheckpoint(
+        prev,
+        `Codemod: Modernized ${replacedCount} Environment Variable References`,
+        "codemod",
         updatedEntries
       )
     );
@@ -803,6 +844,15 @@ export function CodeInspectorView({
             title="Open Incremental Migration & Strangler Fig Configurator"
           >
             🔀 Cutover ({cutoverSynthesis.cutoverPercentage}%)
+          </button>
+
+          <button
+            type="button"
+            className={`action-btn secondary env-btn ${envReport.leakedSecretsCount > 0 ? "env-alert" : ""}`}
+            onClick={() => setEnvModalOpen(true)}
+            title="Open Environment Variable & Secret Boundary Studio"
+          >
+            🔐 Env ({envReport.securityScore}%)
           </button>
 
           <button
@@ -1492,6 +1542,17 @@ export function CodeInspectorView({
         entries={projectEntries}
         targetName={targetName}
         onApplyCutover={handleApplyCutover}
+        onSelectFile={(filePath) => setSelectedPath(filePath)}
+      />
+
+      {/* Environment Variable & Secret Boundary Studio Modal */}
+      <SecretsEnvModal
+        isOpen={envModalOpen}
+        onClose={() => setEnvModalOpen(false)}
+        entries={projectEntries}
+        targetName={targetName}
+        onApplyInjection={handleApplyEnvInjection}
+        onApplyCodemod={handleApplyEnvCodemod}
         onSelectFile={(filePath) => setSelectedPath(filePath)}
       />
     </div>

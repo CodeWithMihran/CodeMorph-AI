@@ -4244,3 +4244,106 @@ test("Incremental migration and reverse-proxy strangler fig configurator compute
   assert.ok(applied.updatedEntries.some((e) => e.path === ".codemorph/cutover/cloudflare-worker.js"));
   assert.ok(applied.updatedEntries.some((e) => e.path === ".codemorph/cutover/nginx.conf"));
 });
+
+test("Environment variable and secret boundary studio detects referenced keys, flags client leaks, and generates typed contracts", () => {
+  const {
+    scanEnvironmentVariables,
+    isConfidentialSecret,
+    modernizeEnvVarName,
+    generateEnvExampleFile,
+    generateTypedEnvContract,
+    synthesizeEnvStudioReport,
+    injectEnvArchitecture,
+    applyEnvPrefixCodemod,
+  } = require("../lib/env/secret-scanner.ts");
+
+  // 1. Classification & prefix modernization checks
+  assert.equal(isConfidentialSecret("DATABASE_URL"), true);
+  assert.equal(isConfidentialSecret("STRIPE_SECRET_KEY"), true);
+  assert.equal(isConfidentialSecret("REACT_APP_API_URL"), false);
+
+  assert.equal(modernizeEnvVarName("REACT_APP_TITLE", "nextjs"), "NEXT_PUBLIC_TITLE");
+  assert.equal(modernizeEnvVarName("VITE_ANALYTICS_ID", "nextjs"), "NEXT_PUBLIC_ANALYTICS_ID");
+  assert.equal(modernizeEnvVarName("VITE_API_URL", "expo"), "EXPO_PUBLIC_API_URL");
+  assert.equal(modernizeEnvVarName("DATABASE_URL", "nextjs"), "DATABASE_URL");
+
+  // 2. Scan environment variables across Server and Client components
+  const sampleEntries = [
+    {
+      path: "app/page.tsx",
+      content: `export default function Page() {
+  const db = process.env.DATABASE_URL;
+  const api = process.env.REACT_APP_API_URL;
+  return <h1>Home</h1>;
+}`,
+    },
+    {
+      path: "app/checkout/page.tsx",
+      content: `"use client";
+import React from "react";
+export default function CheckoutPage() {
+  // Security Leak: Secret accessed in Client Component!
+  const secretKey = process.env.STRIPE_SECRET_KEY;
+  const theme = import.meta.env.VITE_THEME;
+  return <div>Checkout ({secretKey ? "loaded" : "none"})</div>;
+}`,
+    },
+  ];
+
+  const scanned = scanEnvironmentVariables(sampleEntries, "nextjs");
+  assert.equal(scanned.length, 4);
+
+  // Check leaked secret detection
+  const leakedStripe = scanned.find((v) => v.name === "STRIPE_SECRET_KEY");
+  assert.ok(leakedStripe);
+  assert.equal(leakedStripe.scope, "leaked_secret");
+  assert.equal(leakedStripe.hasClientLeak, true);
+  assert.ok(leakedStripe.recommendation.includes("CRITICAL SECURITY LEAK"));
+
+  // Check server-only variable
+  const serverDb = scanned.find((v) => v.name === "DATABASE_URL");
+  assert.ok(serverDb);
+  assert.equal(serverDb.scope, "server_only");
+  assert.equal(serverDb.hasClientLeak, false);
+
+  // Check public client variable
+  const publicApi = scanned.find((v) => v.name === "REACT_APP_API_URL");
+  assert.ok(publicApi);
+  assert.equal(publicApi.scope, "public_client");
+  assert.equal(publicApi.modernizedName, "NEXT_PUBLIC_API_URL");
+
+  // 3. Generate .env.example and typed contract lib/env.ts
+  const envExample = generateEnvExampleFile(scanned);
+  assert.ok(envExample.includes("NEXT_PUBLIC_API_URL="));
+  assert.ok(envExample.includes("DATABASE_URL="));
+  assert.ok(envExample.includes("WARNING: Leaked secret detected"));
+
+  const typedContract = generateTypedEnvContract(scanned, "nextjs");
+  assert.ok(typedContract.includes("export interface ClientEnvironmentConfig"));
+  assert.ok(typedContract.includes("export interface ServerEnvironmentConfig"));
+  assert.ok(typedContract.includes("export const clientEnv: ClientEnvironmentConfig"));
+  assert.ok(typedContract.includes("export function getServerEnv(): ServerEnvironmentConfig"));
+  assert.ok(typedContract.includes("SECURITY VIOLATION: getServerEnv() called on the client"));
+
+  // 4. Prefix Codemod execution
+  const codemodRes = applyEnvPrefixCodemod(sampleEntries, "nextjs");
+  assert.ok(codemodRes.replacedCount >= 2);
+
+  const updatedHome = codemodRes.updatedEntries.find((e) => e.path === "app/page.tsx");
+  assert.ok(updatedHome.content.includes("process.env.NEXT_PUBLIC_API_URL"));
+
+  const updatedCheckout = codemodRes.updatedEntries.find((e) => e.path === "app/checkout/page.tsx");
+  assert.ok(updatedCheckout.content.includes("process.env.NEXT_PUBLIC_THEME"));
+
+  // 5. Synthesize full report & inject into project
+  const report = synthesizeEnvStudioReport(sampleEntries, "nextjs");
+  assert.equal(report.leakedSecretsCount, 1);
+  assert.ok(report.securityScore < 80, "Score must be penalized for leaked secrets");
+  assert.ok(report.generatedFiles.length >= 3);
+
+  const injected = injectEnvArchitecture(sampleEntries, report);
+  assert.equal(injected.appliedCount, 3);
+  assert.ok(injected.updatedEntries.some((e) => e.path === ".env.example"));
+  assert.ok(injected.updatedEntries.some((e) => e.path === ".env.local.template"));
+  assert.ok(injected.updatedEntries.some((e) => e.path === "lib/env.ts"));
+});
