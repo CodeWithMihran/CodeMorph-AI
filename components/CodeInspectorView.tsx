@@ -27,6 +27,8 @@ import { PerformanceProfilerModal } from "./PerformanceProfilerModal";
 import { generatePerformanceProfile } from "@/lib/perf/bundle-profiler";
 import { ComponentCatalogModal } from "./ComponentCatalogModal";
 import { discoverComponentsAndProps } from "@/lib/components/catalog-generator";
+import { ApiStudioModal } from "./ApiStudioModal";
+import { synthesizeApiArchitecture } from "@/lib/api/api-synthesizer";
 
 interface SourceManifest {
   framework: string;
@@ -107,6 +109,7 @@ export function CodeInspectorView({
   const [catalogModalOpen, setCatalogModalOpen] = useState(false);
   const [universalModalOpen, setUniversalModalOpen] = useState(false);
   const [perfModalOpen, setPerfModalOpen] = useState(false);
+  const [apiStudioModalOpen, setApiStudioModalOpen] = useState(false);
 
 
   // Checkpoint History Time-Machine state
@@ -340,6 +343,27 @@ export function CodeInspectorView({
       createCheckpoint(
         prev,
         `Applied Performance Optimization (${optCount} dynamic imports)`,
+        "scaffold",
+        updatedEntries
+      )
+    );
+    if (onUpdateEntries) {
+      onUpdateEntries(updatedEntries);
+    }
+    setSaveToast(true);
+    setTimeout(() => setSaveToast(false), 2500);
+  };
+
+  const apiSynthesis = useMemo(() => {
+    return synthesizeApiArchitecture(projectEntries);
+  }, [projectEntries]);
+
+  const handleInjectApiFiles = (updatedEntries: ZipEntry[], injectedCount: number) => {
+    setProjectEntries(updatedEntries);
+    setCheckpointHistory((prev) =>
+      createCheckpoint(
+        prev,
+        `Injected API Architecture (${injectedCount} Route Handlers & Actions)`,
         "scaffold",
         updatedEntries
       )
@@ -704,6 +728,15 @@ export function CodeInspectorView({
             title="Open Route Latency & Bundle Footprint Performance Profiler"
           >
             ⚡ Perf ({perfReport.overallPerformanceScore}%)
+          </button>
+
+          <button
+            type="button"
+            className="action-btn secondary api-studio-btn"
+            onClick={() => setApiStudioModalOpen(true)}
+            title="Open API Route Handler & Server Action Studio"
+          >
+            🔌 API ({apiSynthesis.totalEndpointsDiscovered})
           </button>
 
           <button
@@ -1363,6 +1396,16 @@ export function CodeInspectorView({
         entries={projectEntries}
         targetName={targetName}
         onApplyOptimization={handleApplyPerfOptimization}
+        onSelectFile={(filePath) => setSelectedPath(filePath)}
+      />
+
+      {/* API Contract & Server Action Studio Modal */}
+      <ApiStudioModal
+        isOpen={apiStudioModalOpen}
+        onClose={() => setApiStudioModalOpen(false)}
+        entries={projectEntries}
+        targetName={targetName}
+        onInjectFiles={handleInjectApiFiles}
         onSelectFile={(filePath) => setSelectedPath(filePath)}
       />
     </div>

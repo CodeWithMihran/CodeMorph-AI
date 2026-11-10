@@ -3924,3 +3924,115 @@ export default function DashboardPage() {
   assert.ok(untouchedHome);
   assert.ok(!untouchedHome.content.includes("next/dynamic"));
 });
+
+test("Automated API Route Handler and Server Action synthesizer detects REST calls, generates App Router handlers, Server Actions, and mock fixtures", () => {
+  const {
+    scanApiEndpoints,
+    groupApiEndpoints,
+    generateRouteHandlerCode,
+    generateServerActionCode,
+    synthesizeApiArchitecture,
+    injectGeneratedApiFiles,
+  } = require("../lib/api/api-synthesizer.ts");
+
+  const sampleEntries = [
+    {
+      path: "app/users/page.tsx",
+      content: `"use client";
+import { useEffect, useState } from "react";
+import axios from "axios";
+
+export default function UsersPage() {
+  const [users, setUsers] = useState([]);
+
+  useEffect(() => {
+    fetch("/api/users")
+      .then((res) => res.json())
+      .then(setUsers);
+  }, []);
+
+  const handleCreate = async (name) => {
+    await fetch("/api/users", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+  };
+
+  const handleDelete = async (id) => {
+    await axios.delete(\`/api/users/\${id}\`);
+  };
+
+  return <div>Users</div>;
+}`,
+    },
+    {
+      path: "app/products/page.tsx",
+      content: `"use client";
+import axios from "axios";
+
+export default function ProductsPage() {
+  const load = () => {
+    axios.get("/api/products");
+  };
+  return <button onClick={load}>Load</button>;
+}`,
+    },
+  ];
+
+  // 1. Scan API calls
+  const calls = scanApiEndpoints(sampleEntries);
+  assert.ok(calls.length >= 4);
+  assert.ok(calls.some((c) => c.method === "GET" && c.normalizedRoute === "/api/users"));
+  assert.ok(calls.some((c) => c.method === "POST" && c.normalizedRoute === "/api/users"));
+  assert.ok(calls.some((c) => c.method === "DELETE" && c.normalizedRoute.includes("/api/users/")));
+  assert.ok(calls.some((c) => c.method === "GET" && c.normalizedRoute === "/api/products"));
+
+  // 2. Group endpoints
+  const grouped = groupApiEndpoints(calls);
+  assert.ok(grouped.length >= 2);
+
+  const usersGroup = grouped.find((g) => g.normalizedRoute === "/api/users");
+  assert.ok(usersGroup);
+  assert.ok(usersGroup.methods.includes("GET"));
+  assert.ok(usersGroup.methods.includes("POST"));
+  assert.equal(usersGroup.suggestedRouteHandlerPath, "app/api/users/route.ts");
+  assert.equal(usersGroup.suggestedServerActionPath, "app/actions/user.ts");
+
+  // 3. Generate Route Handler code
+  const routeCode = generateRouteHandlerCode(usersGroup);
+  assert.ok(routeCode.includes('import { NextRequest, NextResponse } from "next/server";'));
+  assert.ok(routeCode.includes("export async function GET"));
+  assert.ok(routeCode.includes("export async function POST"));
+  assert.ok(routeCode.includes("NextResponse.json"));
+
+  // 4. Generate Server Action code
+  const actionCode = generateServerActionCode(usersGroup);
+  assert.ok(actionCode.startsWith('"use server";'));
+  assert.ok(actionCode.includes("export async function getUserList()"));
+  assert.ok(actionCode.includes("export async function mutateUser("));
+  assert.ok(actionCode.includes('revalidatePath("/users")'));
+
+  // 5. Complete architecture synthesis
+  const synthesis = synthesizeApiArchitecture(sampleEntries);
+  assert.ok(synthesis.totalEndpointsDiscovered >= 2);
+  assert.ok(synthesis.generatedFiles.length >= 4);
+
+  // Check types file
+  const typesFile = synthesis.generatedFiles.find((f) => f.path === "types/api.ts");
+  assert.ok(typesFile);
+  assert.ok(typesFile.content.includes("export interface User"));
+
+  // Check mock DB fixture
+  const mockDbFile = synthesis.generatedFiles.find((f) => f.path === "lib/mocks/mock-db.ts");
+  assert.ok(mockDbFile);
+  assert.ok(mockDbFile.content.includes("export const mockDatabase: MockDatabaseSchema"));
+
+  // 6. Injection into project
+  const injection = injectGeneratedApiFiles(sampleEntries, synthesis.generatedFiles);
+  assert.equal(injection.injectedCount, synthesis.generatedFiles.length);
+  assert.ok(injection.updatedEntries.some((e) => e.path === "app/api/users/route.ts"));
+  assert.ok(injection.updatedEntries.some((e) => e.path === "app/actions/user.ts"));
+  assert.ok(injection.updatedEntries.some((e) => e.path === "types/api.ts"));
+  assert.ok(injection.updatedEntries.some((e) => e.path === "lib/mocks/mock-db.ts"));
+});
