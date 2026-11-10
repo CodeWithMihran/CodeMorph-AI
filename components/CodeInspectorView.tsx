@@ -29,6 +29,8 @@ import { ComponentCatalogModal } from "./ComponentCatalogModal";
 import { discoverComponentsAndProps } from "@/lib/components/catalog-generator";
 import { ApiStudioModal } from "./ApiStudioModal";
 import { synthesizeApiArchitecture } from "@/lib/api/api-synthesizer";
+import { SeoStudioModal } from "./SeoStudioModal";
+import { synthesizeSeoArchitecture } from "@/lib/seo/metadata-synthesizer";
 
 interface SourceManifest {
   framework: string;
@@ -110,6 +112,7 @@ export function CodeInspectorView({
   const [universalModalOpen, setUniversalModalOpen] = useState(false);
   const [perfModalOpen, setPerfModalOpen] = useState(false);
   const [apiStudioModalOpen, setApiStudioModalOpen] = useState(false);
+  const [seoModalOpen, setSeoModalOpen] = useState(false);
 
 
   // Checkpoint History Time-Machine state
@@ -364,6 +367,27 @@ export function CodeInspectorView({
       createCheckpoint(
         prev,
         `Injected API Architecture (${injectedCount} Route Handlers & Actions)`,
+        "scaffold",
+        updatedEntries
+      )
+    );
+    if (onUpdateEntries) {
+      onUpdateEntries(updatedEntries);
+    }
+    setSaveToast(true);
+    setTimeout(() => setSaveToast(false), 2500);
+  };
+
+  const seoSynthesis = useMemo(() => {
+    return synthesizeSeoArchitecture(projectEntries);
+  }, [projectEntries]);
+
+  const handleInjectSeoFiles = (updatedEntries: ZipEntry[], injectedCount: number) => {
+    setProjectEntries(updatedEntries);
+    setCheckpointHistory((prev) =>
+      createCheckpoint(
+        prev,
+        `Injected SEO Metadata (${injectedCount} files: sitemap, robots, route metadata)`,
         "scaffold",
         updatedEntries
       )
@@ -737,6 +761,15 @@ export function CodeInspectorView({
             title="Open API Route Handler & Server Action Studio"
           >
             🔌 API ({apiSynthesis.totalEndpointsDiscovered})
+          </button>
+
+          <button
+            type="button"
+            className="action-btn secondary seo-btn"
+            onClick={() => setSeoModalOpen(true)}
+            title="Open SEO & OpenGraph Social Metadata Studio"
+          >
+            🔍 SEO ({seoSynthesis.overallSeoScore}%)
           </button>
 
           <button
@@ -1406,6 +1439,16 @@ export function CodeInspectorView({
         entries={projectEntries}
         targetName={targetName}
         onInjectFiles={handleInjectApiFiles}
+        onSelectFile={(filePath) => setSelectedPath(filePath)}
+      />
+
+      {/* SEO & OpenGraph Social Metadata Studio Modal */}
+      <SeoStudioModal
+        isOpen={seoModalOpen}
+        onClose={() => setSeoModalOpen(false)}
+        entries={projectEntries}
+        targetName={targetName}
+        onInjectFiles={handleInjectSeoFiles}
         onSelectFile={(filePath) => setSelectedPath(filePath)}
       />
     </div>

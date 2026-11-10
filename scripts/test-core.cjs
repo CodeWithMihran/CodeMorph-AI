@@ -4036,3 +4036,118 @@ export default function ProductsPage() {
   assert.ok(injection.updatedEntries.some((e) => e.path === "types/api.ts"));
   assert.ok(injection.updatedEntries.some((e) => e.path === "lib/mocks/mock-db.ts"));
 });
+
+test("Automated SEO and OpenGraph metadata synthesizer infers page titles, generates typed metadata, sitemaps, robots, and JSON-LD", () => {
+  const {
+    extractRouteSeoProfiles,
+    generateRouteMetadataSnippet,
+    injectRouteMetadataIntoFile,
+    generateSitemapTs,
+    generateRobotsTs,
+    generateManifestTs,
+    generateJsonLdSnippet,
+    synthesizeSeoArchitecture,
+    injectSeoArchitecture,
+  } = require("../lib/seo/metadata-synthesizer.ts");
+
+  const sampleEntries = [
+    {
+      path: "app/page.tsx",
+      content: `export default function HomePage() {
+  return (
+    <main>
+      <h1>Welcome to CodeMorph</h1>
+      <p>The autonomous code modernization and architectural migration platform.</p>
+    </main>
+  );
+}`,
+    },
+    {
+      path: "app/about/page.tsx",
+      content: `export default function AboutPage() {
+  return (
+    <div>
+      <h1>About Our Technology</h1>
+      <p>Deep agentic workflows transforming legacy SPAs into modern Next.js apps.</p>
+    </div>
+  );
+}`,
+    },
+    {
+      path: "app/contact/page.tsx",
+      content: `"use client";
+import React from "react";
+export default function ContactPage() {
+  return <div>Contact Us</div>;
+}`,
+    },
+  ];
+
+  // 1. Extract route SEO profiles
+  const profiles = extractRouteSeoProfiles(sampleEntries, "CodeMorph");
+  assert.equal(profiles.length, 3);
+
+  const homeProfile = profiles.find((p) => p.route === "/");
+  assert.ok(homeProfile);
+  assert.equal(homeProfile.inferredTitle, "Welcome to CodeMorph");
+  assert.ok(homeProfile.inferredDescription.includes("autonomous code modernization"));
+  assert.equal(homeProfile.isClientComponent, false);
+
+  const aboutProfile = profiles.find((p) => p.route === "/about");
+  assert.ok(aboutProfile);
+  assert.equal(aboutProfile.inferredTitle, "About Our Technology");
+
+  const contactProfile = profiles.find((p) => p.route === "/contact");
+  assert.ok(contactProfile);
+  assert.equal(contactProfile.inferredTitle, "Contact");
+  assert.equal(contactProfile.isClientComponent, true);
+
+  // 2. Generate Route Metadata Snippet
+  const snippet = generateRouteMetadataSnippet(homeProfile, "CodeMorph", "https://codemorph.ai");
+  assert.ok(snippet.includes("export const metadata: Metadata = {"));
+  assert.ok(snippet.includes("CodeMorph — Welcome to CodeMorph"));
+  assert.ok(snippet.includes('canonical: "https://codemorph.ai"'));
+  assert.ok(snippet.includes('card: "summary_large_image"'));
+
+  // 3. Inject Route Metadata into File
+  const injectedPage = injectRouteMetadataIntoFile(sampleEntries[0].content, homeProfile, "CodeMorph", "https://codemorph.ai");
+  assert.ok(injectedPage.includes('import type { Metadata } from "next";'));
+  assert.ok(injectedPage.includes("export const metadata: Metadata = {"));
+  assert.ok(injectedPage.includes("export default function HomePage()"));
+
+  // 4. Generate Sitemap, Robots, Manifest
+  const sitemapCode = generateSitemapTs(profiles, "https://codemorph.ai");
+  assert.ok(sitemapCode.includes('import type { MetadataRoute } from "next";'));
+  assert.ok(sitemapCode.includes("export default function sitemap(): MetadataRoute.Sitemap"));
+  assert.ok(sitemapCode.includes("https://codemorph.ai"));
+  assert.ok(sitemapCode.includes("https://codemorph.ai/about"));
+
+  const robotsCode = generateRobotsTs("https://codemorph.ai");
+  assert.ok(robotsCode.includes("export default function robots(): MetadataRoute.Robots"));
+  assert.ok(robotsCode.includes('sitemap: "https://codemorph.ai/sitemap.xml"'));
+
+  const manifestCode = generateManifestTs("CodeMorph AI");
+  assert.ok(manifestCode.includes("export default function manifest(): MetadataRoute.Manifest"));
+  assert.ok(manifestCode.includes('name: "CodeMorph AI"'));
+  assert.ok(manifestCode.includes('display: "standalone"'));
+
+  // 5. Generate Schema.org JSON-LD
+  const jsonLdStr = generateJsonLdSnippet(homeProfile, "CodeMorph", "https://codemorph.ai");
+  const parsedJsonLd = JSON.parse(jsonLdStr);
+  assert.equal(parsedJsonLd["@context"], "https://schema.org");
+  assert.equal(parsedJsonLd["@type"], "WebSite");
+  assert.equal(parsedJsonLd.name, "Welcome to CodeMorph");
+
+  // 6. Complete SEO Architecture Synthesis & Injection
+  const synthesis = synthesizeSeoArchitecture(sampleEntries, { siteName: "CodeMorph", baseUrl: "https://codemorph.ai" });
+  assert.ok(synthesis.overallSeoScore >= 50 && synthesis.overallSeoScore <= 100);
+  assert.equal(synthesis.routesCount, 3);
+  assert.ok(synthesis.generatedFiles.length >= 4);
+
+  const injection = injectSeoArchitecture(sampleEntries, synthesis.generatedFiles);
+  assert.equal(injection.injectedCount, synthesis.generatedFiles.length);
+  assert.ok(injection.updatedEntries.some((e) => e.path === "app/sitemap.ts"));
+  assert.ok(injection.updatedEntries.some((e) => e.path === "app/robots.ts"));
+  assert.ok(injection.updatedEntries.some((e) => e.path === "app/manifest.ts"));
+  assert.ok(injection.updatedEntries.some((e) => e.path === "app/page.tsx" && e.content.includes("export const metadata")));
+});
