@@ -31,6 +31,8 @@ import { ApiStudioModal } from "./ApiStudioModal";
 import { synthesizeApiArchitecture } from "@/lib/api/api-synthesizer";
 import { SeoStudioModal } from "./SeoStudioModal";
 import { synthesizeSeoArchitecture } from "@/lib/seo/metadata-synthesizer";
+import { IncrementalCutoverModal } from "./IncrementalCutoverModal";
+import { synthesizeStranglerCutover } from "@/lib/cutover/strangler-configurator";
 
 interface SourceManifest {
   framework: string;
@@ -113,6 +115,7 @@ export function CodeInspectorView({
   const [perfModalOpen, setPerfModalOpen] = useState(false);
   const [apiStudioModalOpen, setApiStudioModalOpen] = useState(false);
   const [seoModalOpen, setSeoModalOpen] = useState(false);
+  const [cutoverModalOpen, setCutoverModalOpen] = useState(false);
 
 
   // Checkpoint History Time-Machine state
@@ -388,6 +391,27 @@ export function CodeInspectorView({
       createCheckpoint(
         prev,
         `Injected SEO Metadata (${injectedCount} files: sitemap, robots, route metadata)`,
+        "scaffold",
+        updatedEntries
+      )
+    );
+    if (onUpdateEntries) {
+      onUpdateEntries(updatedEntries);
+    }
+    setSaveToast(true);
+    setTimeout(() => setSaveToast(false), 2500);
+  };
+
+  const cutoverSynthesis = useMemo(() => {
+    return synthesizeStranglerCutover(projectEntries);
+  }, [projectEntries]);
+
+  const handleApplyCutover = (updatedEntries: ZipEntry[], appliedCount: number) => {
+    setProjectEntries(updatedEntries);
+    setCheckpointHistory((prev) =>
+      createCheckpoint(
+        prev,
+        `Applied Strangler Fig Cutover (${appliedCount} files: next.config.ts, middleware.ts)`,
         "scaffold",
         updatedEntries
       )
@@ -770,6 +794,15 @@ export function CodeInspectorView({
             title="Open SEO & OpenGraph Social Metadata Studio"
           >
             🔍 SEO ({seoSynthesis.overallSeoScore}%)
+          </button>
+
+          <button
+            type="button"
+            className="action-btn secondary cutover-btn"
+            onClick={() => setCutoverModalOpen(true)}
+            title="Open Incremental Migration & Strangler Fig Configurator"
+          >
+            🔀 Cutover ({cutoverSynthesis.cutoverPercentage}%)
           </button>
 
           <button
@@ -1449,6 +1482,16 @@ export function CodeInspectorView({
         entries={projectEntries}
         targetName={targetName}
         onInjectFiles={handleInjectSeoFiles}
+        onSelectFile={(filePath) => setSelectedPath(filePath)}
+      />
+
+      {/* Incremental Migration & Strangler Fig Configurator Modal */}
+      <IncrementalCutoverModal
+        isOpen={cutoverModalOpen}
+        onClose={() => setCutoverModalOpen(false)}
+        entries={projectEntries}
+        targetName={targetName}
+        onApplyCutover={handleApplyCutover}
         onSelectFile={(filePath) => setSelectedPath(filePath)}
       />
     </div>

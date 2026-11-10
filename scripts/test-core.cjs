@@ -4151,3 +4151,96 @@ export default function ContactPage() {
   assert.ok(injection.updatedEntries.some((e) => e.path === "app/manifest.ts"));
   assert.ok(injection.updatedEntries.some((e) => e.path === "app/page.tsx" && e.content.includes("export const metadata")));
 });
+
+test("Incremental migration and reverse-proxy strangler fig configurator computes traffic split and synthesizes fallback rewrites, middleware, and edge proxies", () => {
+  const {
+    discoverRouteCutoverStatuses,
+    generateNextConfigRewrites,
+    generateCutoverMiddleware,
+    generateCloudflareWorker,
+    generateNginxProxyConfig,
+    generateCloudfrontLambda,
+    synthesizeStranglerCutover,
+    applyStranglerCutover,
+  } = require("../lib/cutover/strangler-configurator.ts");
+
+  const sampleEntries = [
+    {
+      path: "app/page.tsx",
+      content: `export default function Page() { return <h1>Home</h1>; }`,
+    },
+    {
+      path: "app/dashboard/page.tsx",
+      content: `export default function Dashboard() { return <div>Dashboard</div>; }`,
+    },
+    {
+      path: "package.json",
+      content: JSON.stringify({ name: "my-app", version: "1.0.0" }),
+    },
+  ];
+
+  const config = {
+    legacyHost: "https://legacy-app.internal",
+    preserveCookies: true,
+    preserveHeaders: ["authorization", "cookie", "x-session-id"],
+  };
+
+  // 1. Discover route statuses with legacy hints
+  const statuses = discoverRouteCutoverStatuses(sampleEntries, ["/legacy-checkout", "/legacy-admin"]);
+  assert.ok(statuses.length >= 4);
+
+  const homeStatus = statuses.find((s) => s.route === "/");
+  assert.ok(homeStatus);
+  assert.equal(homeStatus.target, "nextjs");
+  assert.equal(homeStatus.filePath, "app/page.tsx");
+
+  const checkoutStatus = statuses.find((s) => s.route === "/legacy-checkout");
+  assert.ok(checkoutStatus);
+  assert.equal(checkoutStatus.target, "legacy_spa");
+
+  // 2. Synthesize next.config.ts rewrites
+  const nextConfig = generateNextConfigRewrites(["/", "/dashboard"], config);
+  assert.ok(nextConfig.includes('import type { NextConfig } from "next";'));
+  assert.ok(nextConfig.includes("async rewrites()"));
+  assert.ok(nextConfig.includes("https://legacy-app.internal"));
+  assert.ok(nextConfig.includes("fallback: ["));
+
+  // 3. Synthesize middleware.ts
+  const middleware = generateCutoverMiddleware(config);
+  assert.ok(middleware.includes('import { NextResponse } from "next/server";'));
+  assert.ok(middleware.includes("x-forwarded-host"));
+  assert.ok(middleware.includes("authorization"));
+  assert.ok(middleware.includes("https://legacy-app.internal"));
+
+  // 4. Synthesize Cloudflare Worker edge script
+  const cfWorker = generateCloudflareWorker(["/", "/dashboard"], config);
+  assert.ok(cfWorker.includes("MODERNIZED_ROUTES"));
+  assert.ok(cfWorker.includes("https://legacy-app.internal"));
+  assert.ok(cfWorker.includes("export default {"));
+
+  // 5. Synthesize Nginx proxy configuration
+  const nginx = generateNginxProxyConfig(["/", "/dashboard"], config);
+  assert.ok(nginx.includes("location = /dashboard"));
+  assert.ok(nginx.includes("proxy_pass http://127.0.0.1:3000;"));
+  assert.ok(nginx.includes("proxy_pass https://legacy-app.internal;"));
+
+  // 6. Synthesize AWS CloudFront Lambda@Edge
+  const cloudfront = generateCloudfrontLambda(["/", "/dashboard"], config);
+  assert.ok(cloudfront.includes("MODERNIZED_EXACT_ROUTES"));
+  assert.ok(cloudfront.includes("legacy-app.internal"));
+  assert.ok(cloudfront.includes("exports.handler = async"));
+
+  // 7. Complete synthesis & project injection
+  const synthesis = synthesizeStranglerCutover(sampleEntries, config);
+  assert.equal(synthesis.modernizedRoutesCount, 2);
+  assert.ok(synthesis.legacyRoutesCount >= 1);
+  assert.ok(synthesis.cutoverPercentage > 0 && synthesis.cutoverPercentage <= 100);
+  assert.ok(synthesis.generatedFiles.length >= 5);
+
+  const applied = applyStranglerCutover(sampleEntries, synthesis);
+  assert.ok(applied.appliedCount >= 5);
+  assert.ok(applied.updatedEntries.some((e) => e.path === "next.config.ts" && e.content.includes("async rewrites()")));
+  assert.ok(applied.updatedEntries.some((e) => e.path === "middleware.ts" && e.content.includes("NextResponse.next")));
+  assert.ok(applied.updatedEntries.some((e) => e.path === ".codemorph/cutover/cloudflare-worker.js"));
+  assert.ok(applied.updatedEntries.some((e) => e.path === ".codemorph/cutover/nginx.conf"));
+});
