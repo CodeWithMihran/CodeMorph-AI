@@ -28,7 +28,7 @@ export function GlowingTilesBackground() {
     let height = 0;
     let dpr = 1;
 
-    // Grid configuration
+    // Grid configuration - Sharp Square Tiles
     const tileSize = 52;
     const gap = 5;
     const stride = tileSize + gap;
@@ -103,7 +103,6 @@ export function GlowingTilesBackground() {
       pulses.length = 0;
       for (let i = 0; i < maxPulses; i++) {
         const p = spawnPulse(width, height);
-        // Randomize initial position across the screen
         if (p.isVertical) {
           p.position = Math.random() * height;
         } else {
@@ -131,8 +130,8 @@ export function GlowingTilesBackground() {
     document.addEventListener("visibilitychange", handleVisibility);
 
     // Color definitions based on active theme
-    // Dark mode: Obsidian black tiles with glowing red pulses beneath
-    // Light mode: Pure porcelain white tiles with glowing cyan/azure blue pulses beneath
+    // Dark mode: Sharp obsidian black tiles with glowing red pulses beneath
+    // Light mode: Sharp porcelain white tiles with glowing cyan/azure blue pulses beneath
     const render = (time: number) => {
       if (!isTabVisible) {
         animationFrameId = requestAnimationFrame(render);
@@ -159,7 +158,7 @@ export function GlowingTilesBackground() {
       ctx.fillStyle = bgColor;
       ctx.fillRect(0, 0, width, height);
 
-      // --- STEP 1: Ambient crevice grid lines ---
+      // --- STEP 1: Sharp Crevice Grid Lines ---
       ctx.strokeStyle = creviceBaseColor;
       ctx.lineWidth = gap;
       ctx.beginPath();
@@ -180,7 +179,6 @@ export function GlowingTilesBackground() {
       ctx.stroke();
 
       // --- STEP 2: Traveling Neon Energy Pulses ---
-      // Update and draw pulses with glowing gradients
       for (let i = 0; i < pulses.length; i++) {
         const p = pulses[i];
         p.position += p.speed * dt * 2.2;
@@ -190,12 +188,10 @@ export function GlowingTilesBackground() {
           (p.speed > 0 && p.position - p.length > maxCoord) ||
           (p.speed < 0 && p.position + p.length < 0)
         ) {
-          // Recycle pulse
           pulses[i] = spawnPulse(width, height);
           continue;
         }
 
-        // Draw glowing segment
         const start = p.position - (p.speed > 0 ? p.length : -p.length);
         const end = p.position;
 
@@ -237,9 +233,7 @@ export function GlowingTilesBackground() {
         ctx.fillRect(0, 0, width, height);
       }
 
-      // --- STEP 4: Render 3D Beveled Tiles (Masking the Glowing Crevices Beneath) ---
-      const tileRadius = 6;
-
+      // --- STEP 4: Render Sharp 90-Degree Square Tiles (Zero Rounded Edges) ---
       for (let r = 0; r < numRows; r++) {
         for (let c = 0; c < numCols; c++) {
           const x = c * stride;
@@ -252,61 +246,55 @@ export function GlowingTilesBackground() {
           const mouseFactor = Math.max(0, 1 - dist / 260);
 
           if (isDark) {
-            // Dark Mode Tile (Obsidian / Carbon with subtle beveled rim)
+            // Dark Mode Tile (Sharp Obsidian / Carbon Slab)
             const baseColor = mouseFactor > 0
               ? `rgb(${Math.floor(14 + mouseFactor * 14)}, ${Math.floor(16 + mouseFactor * 10)}, ${Math.floor(22 + mouseFactor * 16)})`
               : "#0d0f15";
 
-            // Tile surface
+            // Sharp tile surface
             ctx.fillStyle = baseColor;
-            drawRoundRect(ctx, x, y, tileSize, tileSize, tileRadius);
-            ctx.fill();
+            ctx.fillRect(x, y, tileSize, tileSize);
 
-            // Inner subtle gradient/lighting
+            // Subtle linear top-to-bottom surface sheen
             const tileGrad = ctx.createLinearGradient(x, y, x + tileSize, y + tileSize);
             tileGrad.addColorStop(0, `rgba(255, 255, 255, ${0.05 + mouseFactor * 0.08})`);
             tileGrad.addColorStop(1, "rgba(0, 0, 0, 0.45)");
             ctx.fillStyle = tileGrad;
-            drawRoundRect(ctx, x, y, tileSize, tileSize, tileRadius);
-            ctx.fill();
+            ctx.fillRect(x, y, tileSize, tileSize);
 
-            // Border / Rim highlight
+            // Sharp border / perimeter rim
             ctx.lineWidth = 1;
             if (mouseFactor > 0.05) {
               ctx.strokeStyle = `rgba(255, 45, 75, ${mouseFactor * 0.75})`;
             } else {
-              ctx.strokeStyle = "rgba(255, 255, 255, 0.06)";
+              ctx.strokeStyle = "rgba(255, 255, 255, 0.07)";
             }
-            drawRoundRect(ctx, x, y, tileSize, tileSize, tileRadius);
-            ctx.stroke();
+            ctx.strokeRect(x + 0.5, y + 0.5, tileSize - 1, tileSize - 1);
           } else {
-            // Light Mode Tile (Porcelain / Pure Ceramic White with crisp bevel)
+            // Light Mode Tile (Sharp Pure Ceramic Porcelain White Slab)
             const baseColor = mouseFactor > 0
               ? `rgb(${Math.floor(255 - mouseFactor * 6)}, ${Math.floor(255 - mouseFactor * 3)}, 255)`
               : "#ffffff";
 
-            // Tile surface
+            // Sharp tile surface
             ctx.fillStyle = baseColor;
-            drawRoundRect(ctx, x, y, tileSize, tileSize, tileRadius);
-            ctx.fill();
+            ctx.fillRect(x, y, tileSize, tileSize);
 
-            // Tile gradient / top highlight
+            // Crisp surface gradient
             const tileGrad = ctx.createLinearGradient(x, y, x, y + tileSize);
             tileGrad.addColorStop(0, "#ffffff");
             tileGrad.addColorStop(1, "#f1f5f9");
             ctx.fillStyle = tileGrad;
-            drawRoundRect(ctx, x, y, tileSize, tileSize, tileRadius);
-            ctx.fill();
+            ctx.fillRect(x, y, tileSize, tileSize);
 
-            // Border / Rim highlight
+            // Sharp border / perimeter rim
             ctx.lineWidth = 1;
             if (mouseFactor > 0.05) {
               ctx.strokeStyle = `rgba(2, 132, 199, ${mouseFactor * 0.75})`;
             } else {
               ctx.strokeStyle = "rgba(15, 23, 42, 0.08)";
             }
-            drawRoundRect(ctx, x, y, tileSize, tileSize, tileRadius);
-            ctx.stroke();
+            ctx.strokeRect(x + 0.5, y + 0.5, tileSize - 1, tileSize - 1);
           }
         }
       }
@@ -347,22 +335,4 @@ export function GlowingTilesBackground() {
       />
     </div>
   );
-}
-
-// Utility helper for drawing rounded rectangle paths across browsers
-function drawRoundRect(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-  r: number
-) {
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + w, y, x + w, y + h, r);
-  ctx.arcTo(x + w, y + h, x, y + h, r);
-  ctx.arcTo(x, y + h, x, y, r);
-  ctx.arcTo(x, y, x + w, y, r);
-  ctx.closePath();
 }

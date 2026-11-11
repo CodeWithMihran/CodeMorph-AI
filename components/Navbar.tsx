@@ -40,13 +40,13 @@ export function Navbar() {
           <span className="brand-logo" aria-hidden="true" style={{ width: 32, height: 32, display: "inline-flex", flexShrink: 0 }}>
             {isDark ? (
               <svg width="32" height="32" viewBox="0 0 32 32" fill="none" style={{ width: 32, height: 32, display: "block" }}>
-                <rect width="32" height="32" rx="8" fill="#240c12" stroke="rgba(255, 45, 75, 0.3)" strokeWidth="1" />
+                <rect width="32" height="32" fill="#240c12" stroke="rgba(255, 45, 75, 0.3)" strokeWidth="1" />
                 <path d="M8 16L14 10L20 16L14 22L8 16Z" fill="#ff2d55" fillOpacity="0.85" />
                 <path d="M14 16L20 10L26 16L20 22L14 16Z" fill="#ff758f" />
               </svg>
             ) : (
               <svg width="32" height="32" viewBox="0 0 32 32" fill="none" style={{ width: 32, height: 32, display: "block" }}>
-                <rect width="32" height="32" rx="8" fill="#0c2538" stroke="rgba(2, 132, 199, 0.3)" strokeWidth="1" />
+                <rect width="32" height="32" fill="#0c2538" stroke="rgba(2, 132, 199, 0.3)" strokeWidth="1" />
                 <path d="M8 16L14 10L20 16L14 22L8 16Z" fill="#0284c7" fillOpacity="0.85" />
                 <path d="M14 16L20 10L26 16L20 22L14 16Z" fill="#38bdf8" />
               </svg>
