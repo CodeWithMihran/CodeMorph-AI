@@ -5,9 +5,11 @@ import { usePathname } from "next/navigation";
 import { useState, useEffect } from "react";
 import { HistoryDrawer } from "@/components/HistoryDrawer";
 import { getHistory } from "@/lib/storage/history-store";
+import { useTheme } from "@/components/ThemeProvider";
 
 export function Navbar() {
   const pathname = usePathname();
+  const { theme, toggleTheme } = useTheme();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [historyDrawerOpen, setHistoryDrawerOpen] = useState(false);
   const [historyCount, setHistoryCount] = useState(() => getHistory().length);
@@ -29,16 +31,26 @@ export function Navbar() {
     { label: "Self-Learning Rules", href: "/memory", icon: "🧠" },
   ];
 
+  const isDark = theme === "dark";
+
   return (
     <header className="site-header">
       <div className="header-inner">
         <Link href="/" className="brand-link" aria-label="CodeMorph AI Home">
           <span className="brand-logo" aria-hidden="true" style={{ width: 32, height: 32, display: "inline-flex", flexShrink: 0 }}>
-            <svg width="32" height="32" viewBox="0 0 32 32" fill="none" style={{ width: 32, height: 32, display: "block" }}>
-              <rect width="32" height="32" rx="8" fill="#1b382b" />
-              <path d="M8 16L14 10L20 16L14 22L8 16Z" fill="#3cd070" fillOpacity="0.85" />
-              <path d="M14 16L20 10L26 16L20 22L14 16Z" fill="#7bf1a8" />
-            </svg>
+            {isDark ? (
+              <svg width="32" height="32" viewBox="0 0 32 32" fill="none" style={{ width: 32, height: 32, display: "block" }}>
+                <rect width="32" height="32" rx="8" fill="#240c12" stroke="rgba(255, 45, 75, 0.3)" strokeWidth="1" />
+                <path d="M8 16L14 10L20 16L14 22L8 16Z" fill="#ff2d55" fillOpacity="0.85" />
+                <path d="M14 16L20 10L26 16L20 22L14 16Z" fill="#ff758f" />
+              </svg>
+            ) : (
+              <svg width="32" height="32" viewBox="0 0 32 32" fill="none" style={{ width: 32, height: 32, display: "block" }}>
+                <rect width="32" height="32" rx="8" fill="#0c2538" stroke="rgba(2, 132, 199, 0.3)" strokeWidth="1" />
+                <path d="M8 16L14 10L20 16L14 22L8 16Z" fill="#0284c7" fillOpacity="0.85" />
+                <path d="M14 16L20 10L26 16L20 22L14 16Z" fill="#38bdf8" />
+              </svg>
+            )}
           </span>
           <div className="brand-text">
             <span className="brand-title">CodeMorph<span className="brand-accent">AI</span></span>
@@ -67,6 +79,23 @@ export function Navbar() {
           <span className="status-indicator" aria-hidden="true" />
           <span className="status-label">Isolated Sandbox Active</span>
         </div>
+
+        {/* Theme Switcher Toggle */}
+        <button
+          type="button"
+          className="theme-toggle-btn"
+          onClick={toggleTheme}
+          title={isDark ? "Switch to Light Mode (Cyan/Blue glow)" : "Switch to Dark Mode (Crimson/Red glow)"}
+          aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
+        >
+          <span className="theme-toggle-icon" aria-hidden="true">
+            {isDark ? "🌙" : "☀️"}
+          </span>
+          <span className="theme-toggle-text">
+            {isDark ? "Dark" : "Light"}
+          </span>
+          <span className={`theme-toggle-indicator ${isDark ? "indicator-dark" : "indicator-light"}`} />
+        </button>
 
         <button
           type="button"
@@ -110,6 +139,17 @@ export function Navbar() {
               </Link>
             );
           })}
+          <button
+            type="button"
+            className="mobile-nav-item mobile-theme-item"
+            onClick={() => {
+              toggleTheme();
+              setMobileMenuOpen(false);
+            }}
+          >
+            <span className="nav-icon">{isDark ? "🌙" : "☀️"}</span>
+            <span>Switch to {isDark ? "Light Mode" : "Dark Mode"}</span>
+          </button>
         </div>
       )}
 
