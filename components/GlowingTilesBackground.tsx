@@ -98,6 +98,9 @@ export function GlowingTilesBackground() {
       canvas.style.height = `${height}px`;
 
       ctx.scale(dpr, dpr);
+      ctx.lineCap = "square";
+      ctx.lineJoin = "miter";
+      ctx.miterLimit = 2;
 
       // Seed pulses
       pulses.length = 0;

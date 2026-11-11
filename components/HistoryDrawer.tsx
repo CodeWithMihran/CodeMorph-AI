@@ -111,7 +111,12 @@ export function HistoryDrawer({ isOpen, onClose, onRestoreDirectly }: HistoryDra
         {/* Header */}
         <div className="drawer-header">
           <div className="drawer-title-row">
-            <span className="drawer-icon">🕒</span>
+            <span className="drawer-icon" aria-hidden="true">
+              <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <circle cx="8" cy="8" r="6" />
+                <path d="M8 4.5V8L10.5 10" />
+              </svg>
+            </span>
             <div>
               <h2 className="drawer-title">Activity &amp; Inspection History</h2>
               <p className="drawer-subtitle">
@@ -136,7 +141,9 @@ export function HistoryDrawer({ isOpen, onClose, onRestoreDirectly }: HistoryDra
               onClick={onClose}
               aria-label="Close activity history"
             >
-              ✕
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <path d="M4 4l8 8M12 4l-8 8" />
+              </svg>
             </button>
           </div>
         </div>
@@ -190,7 +197,13 @@ export function HistoryDrawer({ isOpen, onClose, onRestoreDirectly }: HistoryDra
               return (
                 <div key={item.id} className="history-card audit-type" role="listitem">
                   <div className="history-card-header">
-                    <div className="type-badge audit">🛡 AUDIT</div>
+                    <div className="type-badge audit">
+                      <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M8 1.5L2.5 4v4.5c0 3.5 2.5 6 5.5 6.5 3-.5 5.5-3 5.5-6.5V4L8 1.5z" />
+                        <path d="M6 8l1.5 1.5L10.5 6" />
+                      </svg>
+                      <span>AUDIT</span>
+                    </div>
                     <span className="history-time">{timeAgo}</span>
                   </div>
                   <h4 className="history-repo-title">{item.repository}</h4>
@@ -208,15 +221,21 @@ export function HistoryDrawer({ isOpen, onClose, onRestoreDirectly }: HistoryDra
                       className="history-action-btn primary"
                       onClick={() => handleRestore(item)}
                     >
-                      Restore &amp; View Audit ➔
+                      <span>Restore &amp; View Audit</span>
+                      <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M3 8h10M9 4l4 4-4 4" />
+                      </svg>
                     </button>
                     <button
                       type="button"
                       className="history-del-btn"
                       onClick={(e) => handleDelete(e, item.id)}
                       title="Remove record"
+                      aria-label="Remove record"
                     >
-                      🗑
+                      <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
+                        <path d="M3 4.5h10M6 4.5V3a1 1 0 011-1h2a1 1 0 011 1v1.5M5 4.5v8.5a1 1 0 001 1h4a1 1 0 001-1V4.5M7 7.5v4M9 7.5v4" />
+                      </svg>
                     </button>
                   </div>
                 </div>
@@ -228,7 +247,13 @@ export function HistoryDrawer({ isOpen, onClose, onRestoreDirectly }: HistoryDra
               return (
                 <div key={item.id} className="history-card feasibility-type" role="listitem">
                   <div className="history-card-header">
-                    <div className="type-badge feasibility">⚡ FEASIBILITY</div>
+                    <div className="type-badge feasibility">
+                      <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2">
+                        <circle cx="8" cy="8" r="6" />
+                        <path d="M8 5v3.5l2.5 1.5" />
+                      </svg>
+                      <span>FEASIBILITY</span>
+                    </div>
                     <span className="history-time">{timeAgo}</span>
                   </div>
                   <h4 className="history-repo-title">{item.repository}</h4>
@@ -245,15 +270,21 @@ export function HistoryDrawer({ isOpen, onClose, onRestoreDirectly }: HistoryDra
                       className="history-action-btn primary"
                       onClick={() => handleRestore(item)}
                     >
-                      View Feasibility Score ➔
+                      <span>View Feasibility Score</span>
+                      <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M3 8h10M9 4l4 4-4 4" />
+                      </svg>
                     </button>
                     <button
                       type="button"
                       className="history-del-btn"
                       onClick={(e) => handleDelete(e, item.id)}
                       title="Remove record"
+                      aria-label="Remove record"
                     >
-                      🗑
+                      <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
+                        <path d="M3 4.5h10M6 4.5V3a1 1 0 011-1h2a1 1 0 011 1v1.5M5 4.5v8.5a1 1 0 001 1h4a1 1 0 001-1V4.5M7 7.5v4M9 7.5v4" />
+                      </svg>
                     </button>
                   </div>
                 </div>
@@ -264,7 +295,13 @@ export function HistoryDrawer({ isOpen, onClose, onRestoreDirectly }: HistoryDra
               return (
                 <div key={item.id} className="history-card migration-type" role="listitem">
                   <div className="history-card-header">
-                    <div className="type-badge migration">⇄ MIGRATION</div>
+                    <div className="type-badge migration">
+                      <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M2.5 5h9M8.5 2l3 3-3 3" />
+                        <path d="M13.5 11h-9M7.5 8l-3 3 3 3" />
+                      </svg>
+                      <span>MIGRATION</span>
+                    </div>
                     <span className="history-time">{timeAgo}</span>
                   </div>
                   <h4 className="history-repo-title">{item.repository}</h4>
@@ -281,15 +318,21 @@ export function HistoryDrawer({ isOpen, onClose, onRestoreDirectly }: HistoryDra
                       className="history-action-btn primary"
                       onClick={() => handleRestore(item)}
                     >
-                      Open Migration Studio ➔
+                      <span>Open Migration Studio</span>
+                      <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M3 8h10M9 4l4 4-4 4" />
+                      </svg>
                     </button>
                     <button
                       type="button"
                       className="history-del-btn"
                       onClick={(e) => handleDelete(e, item.id)}
                       title="Remove record"
+                      aria-label="Remove record"
                     >
-                      🗑
+                      <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
+                        <path d="M3 4.5h10M6 4.5V3a1 1 0 011-1h2a1 1 0 011 1v1.5M5 4.5v8.5a1 1 0 001 1h4a1 1 0 001-1V4.5M7 7.5v4M9 7.5v4" />
+                      </svg>
                     </button>
                   </div>
                 </div>
@@ -301,7 +344,11 @@ export function HistoryDrawer({ isOpen, onClose, onRestoreDirectly }: HistoryDra
 
           {filteredHistory.length === 0 && (
             <div className="drawer-empty-state">
-              <span className="empty-icon">📂</span>
+              <span className="empty-icon" aria-hidden="true">
+                <svg width="32" height="32" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <path d="M2 3.5h4l1.5 2H14v7H2v-9z" />
+                </svg>
+              </span>
               <h4 className="empty-title">No inspection history yet</h4>
               <p className="empty-text">
                 Run an audit in Code Audit Studio, evaluate a repository feasibility score, or execute a stack migration. Completed runs will appear here automatically.

@@ -53,7 +53,11 @@ export function AuditView({
         <div className="audit-header-btns">
           {onExportDossier && (
             <button className="action-btn primary audit-dossier-btn" type="button" onClick={onExportDossier}>
-              <span aria-hidden="true">📄</span> Export Executive Dossier
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+                <path d="M9 1.5H3.5v13h9V5.5L9 1.5z" />
+                <path d="M9 1.5v4h4" />
+              </svg>
+              <span>Export Executive Dossier</span>
             </button>
           )}
           {onDownload && (

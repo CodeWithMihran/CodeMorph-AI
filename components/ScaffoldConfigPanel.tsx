@@ -102,7 +102,14 @@ export function ScaffoldConfigPanel({
         {/* Styling Strategy */}
         <div className="scaffold-card">
           <div className="scaffold-card-header">
-            <span className="scaffold-icon">🎨</span>
+            <span className="scaffold-icon" aria-hidden="true">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <path d="M8 2a6 6 0 100 12c.8 0 1.5-.7 1.5-1.5 0-.4-.2-.8-.4-1.1-.3-.3-.4-.7-.4-1.1 0-.8.7-1.5 1.5-1.5H12a2 2 0 002-2C14 4.5 11.3 2 8 2z" />
+                <circle cx="5" cy="6" r="1" />
+                <circle cx="8" cy="5" r="1" />
+                <circle cx="11" cy="6" r="1" />
+              </svg>
+            </span>
             <span className="scaffold-label">STYLING ENGINE</span>
           </div>
           <p className="scaffold-card-desc">
@@ -194,7 +201,11 @@ export function ScaffoldConfigPanel({
         {/* TypeScript Safety & Strictness */}
         <div className="scaffold-card">
           <div className="scaffold-card-header">
-            <span className="scaffold-icon">🛡️</span>
+            <span className="scaffold-icon" aria-hidden="true">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <path d="M8 1.5L2.5 4v4.5c0 3.5 2.5 6 5.5 6.5 3-.5 5.5-3 5.5-6.5V4L8 1.5z" />
+              </svg>
+            </span>
             <span className="scaffold-label">TYPESCRIPT COMPILER MODE</span>
           </div>
           <p className="scaffold-card-desc">
@@ -236,7 +247,11 @@ export function ScaffoldConfigPanel({
         {!isExpo && (
           <div className="scaffold-card">
             <div className="scaffold-card-header">
-              <span className="scaffold-icon">⚡</span>
+              <span className="scaffold-icon" aria-hidden="true">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
+                  <path d="M8.5 2L3.5 9H8L7.5 14L12.5 7H8L8.5 2Z" />
+                </svg>
+              </span>
               <span className="scaffold-label">RENDERING ARCHITECTURE</span>
             </div>
             <p className="scaffold-card-desc">
@@ -278,7 +293,12 @@ export function ScaffoldConfigPanel({
         {/* Package Manager Selection */}
         <div className="scaffold-card">
           <div className="scaffold-card-header">
-            <span className="scaffold-icon">📦</span>
+            <span className="scaffold-icon" aria-hidden="true">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <path d="M2.5 5.5L8 2.5l5.5 3v5L8 13.5l-5.5-3v-5z" />
+                <path d="M8 2.5v11M2.5 5.5L8 8.5l5.5-3" />
+              </svg>
+            </span>
             <span className="scaffold-label">PACKAGE MANAGER</span>
           </div>
           <p className="scaffold-card-desc">

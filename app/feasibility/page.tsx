@@ -264,7 +264,14 @@ export default function FeasibilityPage() {
                 className="action-btn primary"
                 onClick={() => setDossierModalOpen(true)}
               >
-                <span>📄</span> Export Executive Dossier ➔
+                <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
+                  <path d="M9 1.5H3.5v13h9V5.5L9 1.5z" />
+                  <path d="M9 1.5v4h4" />
+                </svg>
+                <span>Export Executive Dossier</span>
+                <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M3 8h10M9 4l4 4-4 4" />
+                </svg>
               </button>
             </div>
 

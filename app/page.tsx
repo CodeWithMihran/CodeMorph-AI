@@ -194,10 +194,16 @@ export default function HomePage() {
 
         <div className="hero-actions">
           <Link href="/audit" className="action-btn primary">
-            Open Code Audit Studio ➔
+            <span>Open Code Audit Studio</span>
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M3 8h10M9 4l4 4-4 4" />
+            </svg>
           </Link>
           <Link href="/migrate" className="action-btn secondary">
-            Launch Stack Migration ➔
+            <span>Launch Stack Migration</span>
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M3 8h10M9 4l4 4-4 4" />
+            </svg>
           </Link>
         </div>
 
@@ -235,7 +241,12 @@ export default function HomePage() {
             <span className="kicker-pill">AST SCANNER</span>
           </div>
           <div className="dispatch-header">
-            <div className="dispatch-icon">🛡</div>
+            <div className="dispatch-icon" aria-hidden="true">
+              <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <path d="M8 1.5L2.5 4v4.5c0 3.5 2.5 6 5.5 6.5 3-.5 5.5-3 5.5-6.5V4L8 1.5z" />
+                <path d="M6 8l1.5 1.5L10.5 6" />
+              </svg>
+            </div>
             <h3 className="dispatch-title">Codebase Audit &amp; Security</h3>
           </div>
           <p className="dispatch-desc">
@@ -249,7 +260,11 @@ export default function HomePage() {
           </div>
           <div className="dispatch-footer">
             <span>Explore Auditor Module</span>
-            <span className="arrow">➔</span>
+            <span className="arrow" aria-hidden="true">
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M3 8h10M9 4l4 4-4 4" />
+              </svg>
+            </span>
           </div>
         </Link>
 
@@ -261,7 +276,12 @@ export default function HomePage() {
             <span className="kicker-pill">0-100% SUITABILITY</span>
           </div>
           <div className="dispatch-header">
-            <div className="dispatch-icon">⚡</div>
+            <div className="dispatch-icon" aria-hidden="true">
+              <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <circle cx="8" cy="8" r="6" />
+                <path d="M8 5v3.5l2.5 1.5" />
+              </svg>
+            </div>
             <h3 className="dispatch-title">Feasibility &amp; Portability</h3>
           </div>
           <p className="dispatch-desc">
@@ -275,7 +295,11 @@ export default function HomePage() {
           </div>
           <div className="dispatch-footer">
             <span>Calculate Feasibility Score</span>
-            <span className="arrow">➔</span>
+            <span className="arrow" aria-hidden="true">
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M3 8h10M9 4l4 4-4 4" />
+              </svg>
+            </span>
           </div>
         </Link>
 
@@ -287,7 +311,12 @@ export default function HomePage() {
             <span className="kicker-pill">NEXT.JS &amp; EXPO</span>
           </div>
           <div className="dispatch-header">
-            <div className="dispatch-icon">⇄</div>
+            <div className="dispatch-icon" aria-hidden="true">
+              <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <path d="M2.5 5h9M8.5 2l3 3-3 3" />
+                <path d="M13.5 11h-9M7.5 8l-3 3 3 3" />
+              </svg>
+            </div>
             <h3 className="dispatch-title">Stack Migration Studio</h3>
           </div>
           <p className="dispatch-desc">
@@ -301,7 +330,11 @@ export default function HomePage() {
           </div>
           <div className="dispatch-footer">
             <span>Launch Transformation Studio</span>
-            <span className="arrow">➔</span>
+            <span className="arrow" aria-hidden="true">
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M3 8h10M9 4l4 4-4 4" />
+              </svg>
+            </span>
           </div>
         </Link>
 
@@ -313,7 +346,12 @@ export default function HomePage() {
             <span className="kicker-pill">AST REPLAY REPAIR</span>
           </div>
           <div className="dispatch-header">
-            <div className="dispatch-icon">🧠</div>
+            <div className="dispatch-icon" aria-hidden="true">
+              <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <rect x="3.5" y="3.5" width="9" height="9" />
+                <path d="M6 1.5V3.5M10 1.5V3.5M6 12.5V14.5M10 12.5V14.5M1.5 6H3.5M1.5 10H3.5M12.5 6H14.5M12.5 10H14.5" />
+              </svg>
+            </div>
             <h3 className="dispatch-title">Self-Learning Procedural Rules</h3>
           </div>
           <p className="dispatch-desc">
@@ -327,7 +365,11 @@ export default function HomePage() {
           </div>
           <div className="dispatch-footer">
             <span>Review Rule Inventory</span>
-            <span className="arrow">➔</span>
+            <span className="arrow" aria-hidden="true">
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M3 8h10M9 4l4 4-4 4" />
+              </svg>
+            </span>
           </div>
         </Link>
       </section>
@@ -336,14 +378,15 @@ export default function HomePage() {
       <section className="card-workspace">
         <span className="card-reticle top-left" aria-hidden="true">+</span>
         <span className="card-reticle bottom-right" aria-hidden="true">+</span>
-        <div className="section-head">
-          <div className="step-badge">QUICK WORKBENCH</div>
-          <div className="step-info">
-            <h2 className="section-title">Inspect Any Codebase Instantly</h2>
-            <p className="section-desc">
-              Provide a GitHub repository URL or upload a ZIP archive to analyze topology, routes, and health.
-            </p>
+        <div className="workbench-head">
+          <div className="card-top-kicker">
+            <span className="kicker-accent">CLI INGESTION // INSTANT WORKBENCH</span>
+            <span className="kicker-pill">STAGE 01</span>
           </div>
+          <h2 className="section-title">Inspect Any Codebase Instantly</h2>
+          <p className="section-desc">
+            Provide a GitHub repository URL or upload a ZIP archive to analyze topology, routes, and health.
+          </p>
         </div>
 
         <form onSubmit={handleQuickInspect} className="migrate-config-grid">
@@ -464,7 +507,10 @@ export default function HomePage() {
                 {isAuditing ? "Running Code Audit..." : "Run Security & AST Audit on this Repo"}
               </button>
               <Link href="/migrate" className="action-btn primary">
-                Transfer to Stack Migration Studio ➔
+                <span>Transfer to Stack Migration Studio</span>
+                <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M3 8h10M9 4l4 4-4 4" />
+                </svg>
               </Link>
             </div>
           </div>
