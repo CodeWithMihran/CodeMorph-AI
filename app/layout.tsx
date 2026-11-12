@@ -45,7 +45,9 @@ const sharpEdgesStyle = `
   .header-status, .dispatch-card, .card-workspace, .arch-card, .migration-card,
   .tech-tag, .kicker-pill, .step-badge, .badge, .modal-content,
   .drawer-panel, .drawer-tab, .history-card, .action-btn, .theme-toggle-indicator,
-  .status-dot, .brand-logo {
+  .status-dot, .brand-logo, .status-badge-compact, .shortcuts-nav-btn,
+  .shortcuts-modal-panel, .shortcut-kbd, .telemetry-dot, .footer-kbd-btn,
+  .workbench-scope-info, .preset-btn {
     border-radius: 0px !important;
     -webkit-border-radius: 0px !important;
     -moz-border-radius: 0px !important;

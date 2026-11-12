@@ -389,6 +389,40 @@ export default function HomePage() {
           </p>
         </div>
 
+        {/* Security & Verification Scope HUD */}
+        <div className="workbench-scope-info">
+          <div className="scope-info-header">
+            <span className="scope-badge">ZERO HOST EXECUTION GUARANTEE</span>
+            <span className="scope-status">ACTIVE ENFORCEMENT</span>
+          </div>
+          <div className="scope-features-grid">
+            <div className="scope-feature-item">
+              <span className="scope-dot" />
+              <div className="scope-feature-text">
+                <strong>AST Static Parsing:</strong> Evaluates syntax trees and relative imports safely without executing untrusted code.
+              </div>
+            </div>
+            <div className="scope-feature-item">
+              <span className="scope-dot" />
+              <div className="scope-feature-text">
+                <strong>Secret Redaction:</strong> Sanitizes 18+ credential patterns (OpenAI, AWS, GitHub tokens) prior to memory persistence.
+              </div>
+            </div>
+            <div className="scope-feature-item">
+              <span className="scope-dot" />
+              <div className="scope-feature-text">
+                <strong>Google OSV Advisory:</strong> Correlates pinned package manifests with real-time security vulnerability advisories.
+              </div>
+            </div>
+            <div className="scope-feature-item">
+              <span className="scope-dot" />
+              <div className="scope-feature-text">
+                <strong>Network=None Docker:</strong> Downstream verification packages compile in isolated containers with zero network access.
+              </div>
+            </div>
+          </div>
+        </div>
+
         <form onSubmit={handleQuickInspect} className="migrate-config-grid">
           <div className="form-group-full">
             <label className="form-label">SOURCE INGESTION METHOD</label>
@@ -424,6 +458,42 @@ export default function HomePage() {
                   disabled={isBusy}
                   required
                 />
+                <div className="demo-presets-row">
+                  <span className="demo-presets-label">TRY DEMO:</span>
+                  <button
+                    type="button"
+                    className="preset-btn"
+                    onClick={() => {
+                      setRepoUrl("https://github.com/facebook/react");
+                      setBranch("main");
+                    }}
+                    disabled={isBusy}
+                  >
+                    facebook/react
+                  </button>
+                  <button
+                    type="button"
+                    className="preset-btn"
+                    onClick={() => {
+                      setRepoUrl("https://github.com/vercel/next.js");
+                      setBranch("canary");
+                    }}
+                    disabled={isBusy}
+                  >
+                    vercel/next.js
+                  </button>
+                  <button
+                    type="button"
+                    className="preset-btn"
+                    onClick={() => {
+                      setRepoUrl("https://github.com/expo/expo");
+                      setBranch("main");
+                    }}
+                    disabled={isBusy}
+                  >
+                    expo/expo
+                  </button>
+                </div>
               </div>
               <div className="form-group">
                 <label htmlFor="branch" className="form-label">BRANCH</label>
